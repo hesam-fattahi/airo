@@ -1,0 +1,22 @@
+# Binaries and build outputs
+/bin/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test outputs
+*.out
+coverage.html
+
+# IDE and Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Temporary files & local cluster state
+tmp/
+*.log
