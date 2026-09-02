@@ -3,28 +3,23 @@ MAIN_PATH=cmd/main.go
 
 .PHONY: help build run test clean fmt fmt-check verify vet ci
 
-## Display available commands
-help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
+help: ## Display available commands
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-## Compile the operator binary
-build: 
+build: ## Compile the operator binary
 	@echo "Building binary..."
 	@go build -o bin/$(BINARY_NAME) $(MAIN_PATH)
 
-## Verify dependencies
-verify:
+verify: ## Verify Go module dependencies and ensure go.mod is tidy
 	@echo "Verifying dependencies..."
 	@go mod tidy
 	@go mod verify
 
-## Format Go source files
-fmt: 
+fmt: ## Format Go source files
 	@echo "Formatting Go source files..."
 	@gofmt -w .
 
-## Check Go source formatting
-fmt-check:
+fmt-check: ## Check Go source formatting
 	@echo "Checking Go source formatting..."
 	@files=$$(gofmt -l .); \
 	if [ -n "$$files" ]; then \
@@ -37,28 +32,21 @@ fmt-check:
 		exit 0; \
 	fi
 
-## Run Go static analysis (go vet)
-vet: 
+vet: ## Run Go static analysis (go vet)
 	@echo "Running go static analysis..."
 	@go vet ./...
 
-## Run unit tests
-test: 
+test: ## Run unit tests with race detection and no caching
 	@echo "Running unit tests..."
 	@go test -v ./... -race -count=1
 
-## Run all CI validation checks
-ci: fmt-check verify vet test build
+ci: fmt-check verify vet test build ## Run all CI validation checks
 	@echo "All CI checks passed."
 
-## Run the operator locally
-run: 
+run: ## Run the operator locally
 	@go run $(MAIN_PATH)
 
-## Remove build artifacts
-clean: 
+clean: ## Remove build artifacts
 	@echo "Cleaning..."
 	@rm -rf bin/
-	@echo "Done"
-
-## TODO: Build example payment service
+	@echo "Done."
