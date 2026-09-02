@@ -1,7 +1,10 @@
 BINARY_NAME=airo
 MAIN_PATH=cmd/main.go
 
-.PHONY: help build run test clean fmt fmt-check verify vet ci
+KIND_CLUSTER_NAME=airo-cluster
+KIND_CONFIG=deploy/kind-config.yaml
+
+.PHONY: help build run test clean fmt fmt-check verify vet ci cluster-up cluster-down cluster-status
 
 help: ## Display available commands
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -45,6 +48,19 @@ ci: fmt-check verify vet test build ## Run all CI validation checks
 
 run: ## Run the operator locally
 	@go run $(MAIN_PATH)
+
+cluster-up: ## Spin up local KinD multi-node cluster
+	@echo "Spinning up KinD cluster '$(KIND_CLUSTER_NAME)'..."
+	@kind create cluster --config $(KIND_CONFIG)
+	@echo "Cluster is ready. Current nodes:"
+	@kubectl get nodes
+
+cluster-down: ## Destroy local KinD cluster
+	@echo "Destroying KinD cluster '$(KIND_CLUSTER_NAME)'..."
+	@kind delete cluster --name $(KIND_CLUSTER_NAME)
+
+cluster-status: ## Check local KinD cluster status
+	@kubectl get nodes -o wide
 
 clean: ## Remove build artifacts
 	@echo "Cleaning..."
