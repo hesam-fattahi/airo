@@ -51,7 +51,7 @@ run: ## Run the operator locally
 
 cluster-up: ## Spin up local KinD multi-node cluster
 	@echo "Spinning up KinD cluster '$(KIND_CLUSTER_NAME)'..."
-	@kind create cluster --config $(KIND_CONFIG)
+	@kind create cluster --name $(KIND_CLUSTER_NAME) --config $(KIND_CONFIG)
 	@echo "Cluster is ready. Current nodes:"
 	@kubectl get nodes
 
