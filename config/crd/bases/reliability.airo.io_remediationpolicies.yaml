@@ -1,0 +1,141 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.15.0
+  name: remediationpolicies.reliability.airo.io
+spec:
+  group: reliability.airo.io
+  names:
+    kind: RemediationPolicy
+    listKind: RemediationPolicyList
+    plural: remediationpolicies
+    singular: remediationpolicy
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: RemediationPolicy is the Schema for the remediationpolicies API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RemediationPolicySpec defines the desired state of RemediationPolicy
+            properties:
+              detection:
+                description: DetectionConfig defines multi-window burn rate thresholds
+                properties:
+                  fastBurnThreshold:
+                    type: number
+                  longWindow:
+                    type: string
+                  shortWindow:
+                    type: string
+                  slowBurnThreshold:
+                    type: number
+                required:
+                - fastBurnThreshold
+                - longWindow
+                - shortWindow
+                - slowBurnThreshold
+                type: object
+              safety:
+                description: SafetyConfig defines quorum checks and bounded budgets
+                properties:
+                  cooldownDuration:
+                    type: string
+                  maxRemediationsPerWindow:
+                    format: int32
+                    type: integer
+                  minHealthyReplicas:
+                    format: int32
+                    type: integer
+                  remediationWindow:
+                    type: string
+                required:
+                - cooldownDuration
+                - maxRemediationsPerWindow
+                - minHealthyReplicas
+                - remediationWindow
+                type: object
+              slo:
+                description: SLOConfig defines the target SLO and latency thresholds
+                properties:
+                  latencyThresholdMs:
+                    format: int64
+                    type: integer
+                  target:
+                    type: number
+                required:
+                - latencyThresholdMs
+                - target
+                type: object
+              targetRef:
+                description: TargetRef defines the Kubernetes Deployment object to
+                  monitor
+                properties:
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                required:
+                - kind
+                - name
+                type: object
+            required:
+            - detection
+            - safety
+            - slo
+            - targetRef
+            type: object
+          status:
+            description: RemediationPolicyStatus defines the observed state of RemediationPolicy
+            properties:
+              evaluationHoldoffUntil:
+                format: date-time
+                type: string
+              lastRemediationTime:
+                format: date-time
+                type: string
+              longWindowBurnRate:
+                type: number
+              message:
+                type: string
+              observedSLI:
+                type: number
+              phase:
+                description: RemediationPhase represents the current state machine
+                  phase
+                type: string
+              remediationCountInWindow:
+                format: int32
+                type: integer
+              shortWindowBurnRate:
+                type: number
+              targetPodName:
+                type: string
+              targetPodUID:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
