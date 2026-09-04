@@ -2,18 +2,41 @@ package attribution
 
 import (
 	"fmt"
+	"sort"
 )
 
-// PodSLIStat holds telemetry performance data for a single Pod replica
+// PodSLIStat holds telemetry performance data for a single pod.
+//
+// GoodRequests and TotalRequests may represent rates rather than absolute
+// counts, as long as both values use the same unit. Attribution only depends
+// on their ratio and relative traffic volume.
 type PodSLIStat struct {
 	PodName       string
 	PodUID        string
 	GoodRequests  float64
 	TotalRequests float64
-	SLI           float64
 }
 
-// AttributionResult holds the decision of the fault attribution engine
+// SLI returns the pod's calculated service level indicator.
+func (p PodSLIStat) SLI() float64 {
+	if p.TotalRequests <= 0 {
+		return 0
+	}
+
+	sli := p.GoodRequests / p.TotalRequests
+
+	if sli < 0 {
+		return 0
+	}
+
+	if sli > 1 {
+		return 1
+	}
+
+	return sli
+}
+
+// AttributionResult holds the decision of the fault attribution engine.
 type AttributionResult struct {
 	IsAttributable    bool
 	TargetPodName     string
@@ -24,79 +47,137 @@ type AttributionResult struct {
 	Reason            string
 }
 
-// AttributionEngine evaluates per-pod metrics to identify localized outliers
+// AttributionEngine evaluates per-pod metrics to identify localized outliers.
 type AttributionEngine struct {
-	MinTrafficVolume   float64 // Minimum requests required for statistical significance (e.g. 10)
-	MinConfidenceRatio float64 // Minimum outlier ratio to confirm localization (e.g. 0.30)
+	MinTrafficVolume   float64
+	MinConfidenceRatio float64
 }
 
-// NewAttributionEngine initializes an engine with safety thresholds
-func NewAttributionEngine(minTraffic, minConfidence float64) *AttributionEngine {
+// NewAttributionEngine initializes an engine with safety thresholds.
+func NewAttributionEngine(
+	minTraffic float64,
+	minConfidence float64,
+) *AttributionEngine {
 	if minTraffic <= 0 {
 		minTraffic = 10.0
 	}
+
 	if minConfidence <= 0 {
 		minConfidence = 0.30
 	}
+
 	return &AttributionEngine{
 		MinTrafficVolume:   minTraffic,
 		MinConfidenceRatio: minConfidence,
 	}
 }
 
-// EvaluatePods identifies if a single pod is a localized outlier vs a systemic failure
-func (e *AttributionEngine) EvaluatePods(pods []PodSLIStat) AttributionResult {
+// EvaluatePods determines whether one pod is a sufficiently degraded outlier
+// compared with its peers.
+//
+// Each state decision is deterministic so reconciliation remains safe and
+// repeatable across controller restarts.
+func (e *AttributionEngine) EvaluatePods(
+	pods []PodSLIStat,
+) AttributionResult {
 	if len(pods) == 0 {
 		return AttributionResult{
 			IsAttributable:    false,
-			IsSystemicFailure: true,
+			IsSystemicFailure: false,
 			Reason:            "No pod metrics available for evaluation",
 		}
 	}
 
-	var eligiblePods []PodSLIStat
-	var totalGood, totalRequests float64
+	eligiblePods := make(
+		[]PodSLIStat,
+		0,
+		len(pods),
+	)
 
-	// Step 1: Filter out low-traffic pods (Statistical Significance Guard)
-	for _, p := range pods {
-		if p.TotalRequests >= e.MinTrafficVolume {
-			eligiblePods = append(eligiblePods, p)
-			totalGood += p.GoodRequests
-			totalRequests += p.TotalRequests
+	for _, pod := range pods {
+		if pod.TotalRequests >= e.MinTrafficVolume {
+			eligiblePods = append(
+				eligiblePods,
+				pod,
+			)
 		}
 	}
 
-	if len(eligiblePods) == 0 {
+	if len(eligiblePods) < 2 {
 		return AttributionResult{
 			IsAttributable:    false,
 			IsSystemicFailure: false,
-			Reason:            "Insufficient traffic volume across pods for statistical attribution",
+			Reason:            "Insufficient eligible pod traffic for peer comparison",
 		}
 	}
 
-	// Step 2: Calculate Peer Baseline SLI
-	peerBaselineSLI := totalGood / totalRequests
+	// Sort deterministically.
+	//
+	// Primary order: lowest SLI first.
+	// Tie-breaker: oldest/stable lexical UID order.
+	sort.Slice(
+		eligiblePods,
+		func(i, j int) bool {
+			leftSLI := eligiblePods[i].SLI()
+			rightSLI := eligiblePods[j].SLI()
 
-	// Step 3: Identify worst-performing pod
+			if leftSLI != rightSLI {
+				return leftSLI < rightSLI
+			}
+
+			return eligiblePods[i].PodUID <
+				eligiblePods[j].PodUID
+		},
+	)
+
 	worstPod := eligiblePods[0]
-	for _, p := range eligiblePods {
-		if p.SLI < worstPod.SLI {
-			worstPod = p
+	worstPodSLI := worstPod.SLI()
+
+	// Calculate the peer baseline EXCLUDING the suspected worst pod.
+	var peerGood float64
+	var peerTotal float64
+
+	for _, pod := range eligiblePods[1:] {
+		peerGood += pod.GoodRequests
+		peerTotal += pod.TotalRequests
+	}
+
+	if peerTotal <= 0 {
+		return AttributionResult{
+			IsAttributable:    false,
+			IsSystemicFailure: false,
+			Reason:            "Insufficient peer traffic for attribution baseline",
 		}
 	}
 
-	// Step 4: Calculate Relative Outlier Confidence Score
+	peerBaselineSLI := peerGood / peerTotal
+
+	if peerBaselineSLI < 0 {
+		peerBaselineSLI = 0
+	}
+
+	if peerBaselineSLI > 1 {
+		peerBaselineSLI = 1
+	}
+
+	// If peers are also heavily degraded, we should not blame one pod.
 	if peerBaselineSLI <= 0 {
 		return AttributionResult{
 			IsAttributable:    false,
 			IsSystemicFailure: true,
-			Reason:            "Peer baseline SLI is 0%; failure is systemic across all replicas",
+			PeerBaselineSLI:   peerBaselineSLI,
+			Reason:            "Peer baseline SLI is 0; degradation is systemic across replicas",
 		}
 	}
 
-	confidenceScore := (peerBaselineSLI - worstPod.SLI) / peerBaselineSLI
+	confidenceScore :=
+		(peerBaselineSLI - worstPodSLI) /
+			peerBaselineSLI
 
-	// Step 5: Decision Boundary Check
+	if confidenceScore < 0 {
+		confidenceScore = 0
+	}
+
 	if confidenceScore >= e.MinConfidenceRatio {
 		return AttributionResult{
 			IsAttributable:    true,
@@ -105,16 +186,26 @@ func (e *AttributionEngine) EvaluatePods(pods []PodSLIStat) AttributionResult {
 			ConfidenceScore:   confidenceScore,
 			PeerBaselineSLI:   peerBaselineSLI,
 			IsSystemicFailure: false,
-			Reason:            fmt.Sprintf("Pod %s is a localized outlier (Confidence: %.2f)", worstPod.PodName, confidenceScore),
+			Reason: fmt.Sprintf(
+				"pod %s is a localized outlier: pod SLI %.4f, peer baseline %.4f, confidence %.4f",
+				worstPod.PodName,
+				worstPodSLI,
+				peerBaselineSLI,
+				confidenceScore,
+			),
 		}
 	}
 
-	// If confidence score is low, all pods are failing equally -> Systemic Failure
 	return AttributionResult{
 		IsAttributable:    false,
 		ConfidenceScore:   confidenceScore,
 		PeerBaselineSLI:   peerBaselineSLI,
 		IsSystemicFailure: true,
-		Reason:            fmt.Sprintf("Degradation is uniform across pods (Peer Baseline: %.2f); systemic backend failure detected", peerBaselineSLI),
+		Reason: fmt.Sprintf(
+			"degradation is not sufficiently localized: worst pod SLI %.4f, peer baseline %.4f, confidence %.4f",
+			worstPodSLI,
+			peerBaselineSLI,
+			confidenceScore,
+		),
 	}
 }
