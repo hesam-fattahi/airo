@@ -40,34 +40,81 @@ spec:
             description: RemediationPolicySpec defines the desired state of RemediationPolicy
             properties:
               detection:
-                description: DetectionConfig defines multi-window burn rate thresholds
+                description: DetectionConfig defines independent multi-window burn
+                  rate policies
                 properties:
-                  fastBurnThreshold:
-                    type: number
-                  longWindow:
-                    type: string
-                  shortWindow:
-                    type: string
-                  slowBurnThreshold:
-                    type: number
+                  fastBurn:
+                    description: BurnRateWindow configures short/long evaluation windows
+                      and burn rate threshold for a policy
+                    properties:
+                      longWindow:
+                        description: Long evaluation window (e.g. "1h" or "6h")
+                        pattern: ^([0-9]+(s|m|h))+$
+                        type: string
+                      shortWindow:
+                        description: Short evaluation window (e.g. "5m" or "30m")
+                        pattern: ^([0-9]+(s|m|h))+$
+                        type: string
+                      threshold:
+                        description: Burn rate threshold multiplier (e.g. 14.4 or
+                          6.0)
+                        minimum: 0
+                        type: number
+                    required:
+                    - longWindow
+                    - shortWindow
+                    - threshold
+                    type: object
+                  slowBurn:
+                    description: BurnRateWindow configures short/long evaluation windows
+                      and burn rate threshold for a policy
+                    properties:
+                      longWindow:
+                        description: Long evaluation window (e.g. "1h" or "6h")
+                        pattern: ^([0-9]+(s|m|h))+$
+                        type: string
+                      shortWindow:
+                        description: Short evaluation window (e.g. "5m" or "30m")
+                        pattern: ^([0-9]+(s|m|h))+$
+                        type: string
+                      threshold:
+                        description: Burn rate threshold multiplier (e.g. 14.4 or
+                          6.0)
+                        minimum: 0
+                        type: number
+                    required:
+                    - longWindow
+                    - shortWindow
+                    - threshold
+                    type: object
                 required:
-                - fastBurnThreshold
-                - longWindow
-                - shortWindow
-                - slowBurnThreshold
+                - fastBurn
+                - slowBurn
                 type: object
               safety:
-                description: SafetyConfig defines quorum checks and bounded budgets
+                description: SafetyConfig defines quorum checks and bounded remediation
+                  budgets
                 properties:
                   cooldownDuration:
+                    description: Cooldown duration between remediations (e.g. "5m")
+                    pattern: ^([0-9]+(s|m|h))+$
                     type: string
                   maxRemediationsPerWindow:
+                    description: Maximum allowed remediations within the remediation
+                      window
                     format: int32
+                    minimum: 1
                     type: integer
                   minHealthyReplicas:
+                    description: Minimum number of healthy replicas required to allow
+                      remediation
                     format: int32
+                    minimum: 1
                     type: integer
                   remediationWindow:
+                    description: Time window for maximum remediation budget tracking
+                      (e.g. "1h")
+                    pattern: ^([0-9]+(s|m|h))+$
                     type: string
                 required:
                 - cooldownDuration
@@ -79,9 +126,14 @@ spec:
                 description: SLOConfig defines the target SLO and latency thresholds
                 properties:
                   latencyThresholdMs:
+                    description: Latency threshold in milliseconds (e.g. 50 for 50ms)
                     format: int64
+                    minimum: 1
                     type: integer
                   target:
+                    description: Target ratio (e.g. 0.99 for 99.0% SLO)
+                    maximum: 1
+                    minimum: 0
                     type: number
                 required:
                 - latencyThresholdMs
@@ -89,14 +141,13 @@ spec:
                 type: object
               targetRef:
                 description: TargetRef defines the Kubernetes Deployment object to
-                  monitor
+                  monitor in the policy's namespace
                 properties:
-                  kind:
-                    type: string
                   name:
+                    description: Name of the target Deployment
+                    minLength: 1
                     type: string
                 required:
-                - kind
                 - name
                 type: object
             required:
@@ -108,32 +159,45 @@ spec:
           status:
             description: RemediationPolicyStatus defines the observed state of RemediationPolicy
             properties:
+              attributionConfidence:
+                type: number
+              attributionReason:
+                type: string
               evaluationHoldoffUntil:
                 format: date-time
                 type: string
+              fastBurnRate:
+                type: number
               lastRemediationTime:
                 format: date-time
                 type: string
-              longWindowBurnRate:
-                type: number
               message:
                 type: string
+              observedP99LatencyMs:
+                type: number
               observedSLI:
                 type: number
               phase:
-                description: RemediationPhase represents the current state machine
-                  phase
+                description: |-
+                  RemediationPhase represents the current state machine phase.
+                  Each phase transition is persisted atomically in CR status so reconciliation
+                  can safely resume after controller restart or reconciliation interruption.
                 type: string
               remediationCountInWindow:
                 format: int32
                 type: integer
-              shortWindowBurnRate:
+              remediationWindowStart:
+                format: date-time
+                type: string
+              slowBurnRate:
                 type: number
               targetPodName:
                 type: string
               targetPodUID:
                 type: string
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

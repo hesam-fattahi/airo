@@ -5,16 +5,19 @@ metadata:
   namespace: default
 spec:
   targetRef:
-    kind: Deployment
     name: payment-api
   slo:
     target: 0.99
     latencyThresholdMs: 50
   detection:
-    shortWindow: "5m"
-    longWindow: "1h"
-    fastBurnThreshold: 14.4
-    slowBurnThreshold: 6.0
+    fastBurn:
+      shortWindow: "5m"
+      longWindow: "1h"
+      threshold: 14.4
+    slowBurn:
+      shortWindow: "30m"
+      longWindow: "6h"
+      threshold: 6.0
   safety:
     minHealthyReplicas: 3
     cooldownDuration: "5m"

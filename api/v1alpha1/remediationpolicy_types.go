@@ -4,14 +4,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// RemediationPhase represents the current state machine phase
+// RemediationPhase represents the current state machine phase.
+// Each phase transition is persisted atomically in CR status so reconciliation
+// can safely resume after controller restart or reconciliation interruption.
 type RemediationPhase string
 
 const (
 	PhaseHealthy              RemediationPhase = "Healthy"
 	PhaseViolationConfirmed   RemediationPhase = "ViolationConfirmed"
 	PhaseAttributionCompleted RemediationPhase = "AttributionCompleted"
-	PhaseSystemicHalt         RemediationPhase = "SystemicHalt"
+	PhaseSystemicHalt         RemediationPhase = "SystemicHalt" // Non-destructive observation state when failures are uniform across all pods
 	PhaseSafetyApproved       RemediationPhase = "SafetyApproved"
 	PhaseIsolationRequested   RemediationPhase = "IsolationRequested"
 	PhaseIsolationVerified    RemediationPhase = "IsolationVerified"
@@ -20,32 +22,63 @@ const (
 	PhaseRemediationFailed    RemediationPhase = "RemediationFailed"
 )
 
-// TargetRef defines the Kubernetes Deployment object to monitor
+// TargetRef defines the Kubernetes Deployment object to monitor in the policy's namespace
 type TargetRef struct {
-	Kind string `json:"kind"`
+	// Name of the target Deployment
+	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 }
 
 // SLOConfig defines the target SLO and latency thresholds
 type SLOConfig struct {
-	Target             float64 `json:"target"`             // e.g. 0.99 (99.0%)
-	LatencyThresholdMs int64   `json:"latencyThresholdMs"` // e.g. 50 (50ms)
+	// Target ratio (e.g. 0.99 for 99.0% SLO)
+	// +kubebuilder:validation:Minimum=0.0
+	// +kubebuilder:validation:Maximum=1.0
+	Target float64 `json:"target"`
+
+	// Latency threshold in milliseconds (e.g. 50 for 50ms)
+	// +kubebuilder:validation:Minimum=1
+	LatencyThresholdMs int64 `json:"latencyThresholdMs"`
 }
 
-// DetectionConfig defines multi-window burn rate thresholds
+// BurnRateWindow configures short/long evaluation windows and burn rate threshold for a policy
+type BurnRateWindow struct {
+	// Short evaluation window (e.g. "5m" or "30m")
+	// +kubebuilder:validation:Pattern=`^([0-9]+(s|m|h))+$`
+	ShortWindow string `json:"shortWindow"`
+
+	// Long evaluation window (e.g. "1h" or "6h")
+	// +kubebuilder:validation:Pattern=`^([0-9]+(s|m|h))+$`
+	LongWindow string `json:"longWindow"`
+
+	// Burn rate threshold multiplier (e.g. 14.4 or 6.0)
+	// +kubebuilder:validation:Minimum=0.0
+	Threshold float64 `json:"threshold"`
+}
+
+// DetectionConfig defines independent multi-window burn rate policies
 type DetectionConfig struct {
-	ShortWindow       string  `json:"shortWindow"`       // e.g. "5m"
-	LongWindow        string  `json:"longWindow"`        // e.g. "1h"
-	FastBurnThreshold float64 `json:"fastBurnThreshold"` // e.g. 14.4
-	SlowBurnThreshold float64 `json:"slowBurnThreshold"` // e.g. 6.0
+	FastBurn BurnRateWindow `json:"fastBurn"`
+	SlowBurn BurnRateWindow `json:"slowBurn"`
 }
 
-// SafetyConfig defines quorum checks and bounded budgets
+// SafetyConfig defines quorum checks and bounded remediation budgets
 type SafetyConfig struct {
-	MinHealthyReplicas       int32  `json:"minHealthyReplicas"`       // e.g. 3
-	CooldownDuration         string `json:"cooldownDuration"`         // e.g. "5m"
-	MaxRemediationsPerWindow int32  `json:"maxRemediationsPerWindow"` // e.g. 2
-	RemediationWindow        string `json:"remediationWindow"`        // e.g. "1h"
+	// Minimum number of healthy replicas required to allow remediation
+	// +kubebuilder:validation:Minimum=1
+	MinHealthyReplicas int32 `json:"minHealthyReplicas"`
+
+	// Cooldown duration between remediations (e.g. "5m")
+	// +kubebuilder:validation:Pattern=`^([0-9]+(s|m|h))+$`
+	CooldownDuration string `json:"cooldownDuration"`
+
+	// Maximum allowed remediations within the remediation window
+	// +kubebuilder:validation:Minimum=1
+	MaxRemediationsPerWindow int32 `json:"maxRemediationsPerWindow"`
+
+	// Time window for maximum remediation budget tracking (e.g. "1h")
+	// +kubebuilder:validation:Pattern=`^([0-9]+(s|m|h))+$`
+	RemediationWindow string `json:"remediationWindow"`
 }
 
 // RemediationPolicySpec defines the desired state of RemediationPolicy
@@ -58,16 +91,27 @@ type RemediationPolicySpec struct {
 
 // RemediationPolicyStatus defines the observed state of RemediationPolicy
 type RemediationPolicyStatus struct {
-	Phase                    RemediationPhase `json:"phase,omitempty"`
-	ObservedSLI              float64          `json:"observedSLI,omitempty"`
-	ShortWindowBurnRate      float64          `json:"shortWindowBurnRate,omitempty"`
-	LongWindowBurnRate       float64          `json:"longWindowBurnRate,omitempty"`
-	TargetPodUID             string           `json:"targetPodUID,omitempty"`
-	TargetPodName            string           `json:"targetPodName,omitempty"`
-	LastRemediationTime      *metav1.Time     `json:"lastRemediationTime,omitempty"`
-	EvaluationHoldoffUntil   *metav1.Time     `json:"evaluationHoldoffUntil,omitempty"`
-	RemediationCountInWindow int32            `json:"remediationCountInWindow,omitempty"`
-	Message                  string           `json:"message,omitempty"`
+	Phase RemediationPhase `json:"phase,omitempty"`
+
+	ObservedSLI          float64 `json:"observedSLI,omitempty"`
+	ObservedP99LatencyMs float64 `json:"observedP99LatencyMs,omitempty"`
+
+	FastBurnRate float64 `json:"fastBurnRate,omitempty"`
+	SlowBurnRate float64 `json:"slowBurnRate,omitempty"`
+
+	TargetPodUID  string `json:"targetPodUID,omitempty"`
+	TargetPodName string `json:"targetPodName,omitempty"`
+
+	AttributionConfidence float64 `json:"attributionConfidence,omitempty"`
+	AttributionReason     string  `json:"attributionReason,omitempty"`
+
+	LastRemediationTime    *metav1.Time `json:"lastRemediationTime,omitempty"`
+	EvaluationHoldoffUntil *metav1.Time `json:"evaluationHoldoffUntil,omitempty"`
+
+	RemediationWindowStart   *metav1.Time `json:"remediationWindowStart,omitempty"`
+	RemediationCountInWindow int32        `json:"remediationCountInWindow,omitempty"`
+
+	Message string `json:"message,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -78,7 +122,7 @@ type RemediationPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   RemediationPolicySpec   `json:"spec,omitempty"`
+	Spec   RemediationPolicySpec   `json:"spec"`
 	Status RemediationPolicyStatus `json:"status,omitempty"`
 }
 
