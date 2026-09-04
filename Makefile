@@ -9,7 +9,7 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 # Controller-gen version for modern Go toolchain compatibility
-CONTROLLER_TOOLS_VERSION ?= v0.16.2
+CONTROLLER_TOOLS_VERSION ?= v0.16.5
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 
 .PHONY: help build run test clean fmt fmt-check verify vet ci \
@@ -24,7 +24,7 @@ controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessar
 $(CONTROLLER_GEN): $(LOCALBIN)
 	@test -s $(LOCALBIN)/controller-gen || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject implementations
+generate: controller-gen ## Generate code containing DeepCopy implementations
 	@echo "Generating Go DeepCopy code..."
 	@$(CONTROLLER_GEN) object paths="./..."
 
@@ -33,7 +33,7 @@ manifests: controller-gen ## Generate CustomResourceDefinition YAML objects
 	@mkdir -p config/crd/bases
 	@$(CONTROLLER_GEN) crd:allowDangerousTypes=true paths="./..." output:crd:artifacts:config=config/crd/bases
 
-build: generate manifests ## Compile the operator binary
+build: ## Compile the operator binary
 	@echo "Building binary..."
 	@go build -o bin/$(BINARY_NAME) $(MAIN_PATH)
 
@@ -64,14 +64,14 @@ vet: ## Run Go static analysis (go vet)
 	@echo "Running go static analysis..."
 	@go vet ./...
 
-test: generate ## Run unit tests with race detection and no caching
+test: ## Run unit tests with race detection and no caching
 	@echo "Running unit tests..."
 	@go test -v ./... -race -count=1
 
 ci: fmt-check verify vet test build ## Run all CI validation checks
 	@echo "All CI checks passed."
 
-run: generate ## Run the operator locally
+run: ## Run the operator locally
 	@go run $(MAIN_PATH)
 
 cluster-up: ## Spin up local KinD multi-node cluster
