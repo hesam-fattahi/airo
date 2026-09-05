@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airo-operator
+  namespace: default
+  labels:
+    app: airo-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airo-operator
+  template:
+    metadata:
+      labels:
+        app: airo-operator
+    spec:
+      serviceAccountName: airo-operator
+      containers:
+        - name: manager
+          image: airo:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--prometheus-url=http://prometheus.monitoring.svc:9090"
+          ports:
+            - containerPort: 8081
+              name: metrics
+          resources:
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
