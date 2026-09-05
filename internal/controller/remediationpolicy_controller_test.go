@@ -88,6 +88,11 @@ func TestReconcileEvaluationHoldoff(t *testing.T) {
 	ctx := context.Background()
 	scheme := controllerScheme(t)
 
+	defaultDetection := v1alpha1.DetectionConfig{
+		FastBurn: v1alpha1.BurnRateWindow{ShortWindow: "5m", LongWindow: "1h", Threshold: 14.4},
+		SlowBurn: v1alpha1.BurnRateWindow{ShortWindow: "30m", LongWindow: "6h", Threshold: 6.0},
+	}
+
 	t.Run("Holdoff Active - Requeues for remaining duration", func(t *testing.T) {
 		future := metav1.NewTime(time.Now().Add(3 * time.Minute))
 		policy := &v1alpha1.RemediationPolicy{
@@ -95,6 +100,7 @@ func TestReconcileEvaluationHoldoff(t *testing.T) {
 			Spec: v1alpha1.RemediationPolicySpec{
 				TargetRef: v1alpha1.TargetRef{Name: "payment-api"},
 				SLO:       v1alpha1.SLOConfig{Target: 0.99, LatencyThresholdMs: 50},
+				Detection: defaultDetection,
 			},
 			Status: v1alpha1.RemediationPolicyStatus{
 				Phase:                  v1alpha1.PhaseEvaluationHoldoff,
@@ -129,6 +135,7 @@ func TestReconcileEvaluationHoldoff(t *testing.T) {
 			Spec: v1alpha1.RemediationPolicySpec{
 				TargetRef: v1alpha1.TargetRef{Name: "payment-api"},
 				SLO:       v1alpha1.SLOConfig{Target: 0.99, LatencyThresholdMs: 50},
+				Detection: defaultDetection,
 			},
 			Status: v1alpha1.RemediationPolicyStatus{
 				Phase:                  v1alpha1.PhaseEvaluationHoldoff,
@@ -157,6 +164,9 @@ func TestReconcileEvaluationHoldoff(t *testing.T) {
 
 		if updatedPolicy.Status.Phase != v1alpha1.PhaseHealthy {
 			t.Errorf("Expected phase Healthy after recovery, got %s", updatedPolicy.Status.Phase)
+		}
+		if updatedPolicy.Status.TargetPodName != "" {
+			t.Errorf("Expected target pod name to be cleared")
 		}
 	})
 }
