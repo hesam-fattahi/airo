@@ -39,16 +39,14 @@ type RemediationPolicyReconciler struct {
 func (r *RemediationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// Step 1: Fetch the RemediationPolicy custom resource
 	policy := &v1alpha1.RemediationPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
 		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil // Policy was deleted
+			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to fetch RemediationPolicy %s: %w", req.NamespacedName, err)
 	}
 
-	// Initialize Phase if empty
 	if policy.Status.Phase == "" {
 		err := r.updateStatus(ctx, req.NamespacedName, func(p *v1alpha1.RemediationPolicy) {
 			p.Status.Phase = v1alpha1.PhaseHealthy
@@ -60,7 +58,6 @@ func (r *RemediationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	// Step 2: Execute State Machine Phase Switch
 	switch policy.Status.Phase {
 
 	case v1alpha1.PhaseHealthy:
@@ -96,13 +93,11 @@ func (r *RemediationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 }
 
-// reconcileHealthy checks current telemetry against SLO burn rate thresholds
 func (r *RemediationPolicyReconciler) reconcileHealthy(ctx context.Context, key types.NamespacedName, policy *v1alpha1.RemediationPolicy) (ctrl.Result, error) {
 	if r.TelemetryClient == nil {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 
-	// Query Fast Burn SLIs
 	fastShortSLI, err := r.TelemetryClient.QueryDeploymentSLI(ctx, policy.Spec.TargetRef.Name, policy.Spec.Detection.FastBurn.ShortWindow, policy.Spec.SLO.LatencyThresholdMs)
 	if err != nil || !fastShortSLI.HasTraffic {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
@@ -118,7 +113,6 @@ func (r *RemediationPolicyReconciler) reconcileHealthy(ctx context.Context, key 
 		return ctrl.Result{}, err
 	}
 
-	// Query Slow Burn SLIs
 	slowShortSLI, err := r.TelemetryClient.QueryDeploymentSLI(ctx, policy.Spec.TargetRef.Name, policy.Spec.Detection.SlowBurn.ShortWindow, policy.Spec.SLO.LatencyThresholdMs)
 	if err != nil || !slowShortSLI.HasTraffic {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
@@ -134,7 +128,6 @@ func (r *RemediationPolicyReconciler) reconcileHealthy(ctx context.Context, key 
 		return ctrl.Result{}, err
 	}
 
-	// Update Status Metrics
 	if err := r.updateStatus(ctx, key, func(p *v1alpha1.RemediationPolicy) {
 		p.Status.ObservedSLI = fastShortSLI.Value
 		p.Status.FastBurnRate = fastResult.ShortBurnRate
@@ -160,7 +153,6 @@ func (r *RemediationPolicyReconciler) reconcileHealthy(ctx context.Context, key 
 	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 }
 
-// reconcileViolationConfirmed executes per-pod fault attribution
 func (r *RemediationPolicyReconciler) reconcileViolationConfirmed(ctx context.Context, key types.NamespacedName, policy *v1alpha1.RemediationPolicy) (ctrl.Result, error) {
 	if r.TelemetryClient == nil || r.AttributionEngine == nil {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
@@ -215,7 +207,6 @@ func (r *RemediationPolicyReconciler) reconcileViolationConfirmed(ctx context.Co
 	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 }
 
-// reconcileAttributionCompleted checks safety policies (quorum, cooldown, budget)
 func (r *RemediationPolicyReconciler) reconcileAttributionCompleted(ctx context.Context, key types.NamespacedName, policy *v1alpha1.RemediationPolicy) (ctrl.Result, error) {
 	healthyCount, err := r.countHealthyReplicas(ctx, policy.Namespace, policy.Spec.TargetRef.Name)
 	if err != nil {
@@ -259,7 +250,6 @@ func (r *RemediationPolicyReconciler) reconcileAttributionCompleted(ctx context.
 	return ctrl.Result{Requeue: true}, nil
 }
 
-// reconcileSafetyApproved mutates pod labels to isolate traffic
 func (r *RemediationPolicyReconciler) reconcileSafetyApproved(ctx context.Context, key types.NamespacedName, policy *v1alpha1.RemediationPolicy) (ctrl.Result, error) {
 	if r.Isolator == nil {
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
@@ -284,7 +274,6 @@ func (r *RemediationPolicyReconciler) reconcileSafetyApproved(ctx context.Contex
 	return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 }
 
-// reconcileIsolationRequested verifies EndpointSlice traffic removal
 func (r *RemediationPolicyReconciler) reconcileIsolationRequested(ctx context.Context, key types.NamespacedName, policy *v1alpha1.RemediationPolicy) (ctrl.Result, error) {
 	if r.Isolator == nil {
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
@@ -295,7 +284,6 @@ func (r *RemediationPolicyReconciler) reconcileIsolationRequested(ctx context.Co
 	err := r.Get(ctx, podKey, pod)
 
 	if apierrors.IsNotFound(err) {
-		// Target pod disappeared; isolation verified implicitly
 		err := r.updateStatus(ctx, key, func(p *v1alpha1.RemediationPolicy) {
 			p.Status.Phase = v1alpha1.PhaseIsolationVerified
 			p.Status.Message = "Target pod disappeared before isolation verification"
@@ -310,6 +298,7 @@ func (r *RemediationPolicyReconciler) reconcileIsolationRequested(ctx context.Co
 		return ctrl.Result{}, fmt.Errorf("failed to fetch target pod during isolation verification: %w", err)
 	}
 
+	// Verify target Pod UID matches
 	if string(pod.UID) != policy.Status.TargetPodUID {
 		return ctrl.Result{}, fmt.Errorf("target pod UID changed during isolation verification: expected %s, got %s", policy.Status.TargetPodUID, pod.UID)
 	}
@@ -336,7 +325,6 @@ func (r *RemediationPolicyReconciler) reconcileIsolationRequested(ctx context.Co
 	return ctrl.Result{Requeue: true}, nil
 }
 
-// reconcileIsolationVerified issues graceful pod deletion
 func (r *RemediationPolicyReconciler) reconcileIsolationVerified(ctx context.Context, key types.NamespacedName, policy *v1alpha1.RemediationPolicy) (ctrl.Result, error) {
 	if r.Executor == nil {
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
@@ -364,7 +352,6 @@ func (r *RemediationPolicyReconciler) reconcileIsolationVerified(ctx context.Con
 	return ctrl.Result{Requeue: true}, nil
 }
 
-// reconcileRecoveryRequested sets evaluation holdoff timer
 func (r *RemediationPolicyReconciler) reconcileRecoveryRequested(ctx context.Context, key types.NamespacedName, policy *v1alpha1.RemediationPolicy) (ctrl.Result, error) {
 	holdoffUntil := metav1.NewTime(time.Now().Add(5 * time.Minute))
 
@@ -379,7 +366,6 @@ func (r *RemediationPolicyReconciler) reconcileRecoveryRequested(ctx context.Con
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-// reconcileEvaluationHoldoff waits for telemetry to clear and verifies recovery
 func (r *RemediationPolicyReconciler) reconcileEvaluationHoldoff(ctx context.Context, key types.NamespacedName, policy *v1alpha1.RemediationPolicy) (ctrl.Result, error) {
 	if r.TelemetryClient == nil {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
@@ -390,23 +376,41 @@ func (r *RemediationPolicyReconciler) reconcileEvaluationHoldoff(ctx context.Con
 		return ctrl.Result{RequeueAfter: remaining}, nil
 	}
 
-	// Holdoff expired; check if SLI recovered
-	sliResult, err := r.TelemetryClient.QueryDeploymentSLI(ctx, policy.Spec.TargetRef.Name, policy.Spec.Detection.FastBurn.ShortWindow, policy.Spec.SLO.LatencyThresholdMs)
-	if err == nil && sliResult.HasTraffic && sliResult.Value >= policy.Spec.SLO.Target {
+	// Holdoff expired; evaluate fast and slow burn windows for consistent recovery verification
+	fastShortSLI, err := r.TelemetryClient.QueryDeploymentSLI(ctx, policy.Spec.TargetRef.Name, policy.Spec.Detection.FastBurn.ShortWindow, policy.Spec.SLO.LatencyThresholdMs)
+	if err != nil || !fastShortSLI.HasTraffic {
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	}
+
+	fastLongSLI, err := r.TelemetryClient.QueryDeploymentSLI(ctx, policy.Spec.TargetRef.Name, policy.Spec.Detection.FastBurn.LongWindow, policy.Spec.SLO.LatencyThresholdMs)
+	if err != nil || !fastLongSLI.HasTraffic {
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	}
+
+	fastResult, err := slo.EvaluateWindowPair(policy.Spec.SLO.Target, fastShortSLI.Value, fastLongSLI.Value, policy.Spec.Detection.FastBurn)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	slowShortSLI, _ := r.TelemetryClient.QueryDeploymentSLI(ctx, policy.Spec.TargetRef.Name, policy.Spec.Detection.SlowBurn.ShortWindow, policy.Spec.SLO.LatencyThresholdMs)
+	slowLongSLI, _ := r.TelemetryClient.QueryDeploymentSLI(ctx, policy.Spec.TargetRef.Name, policy.Spec.Detection.SlowBurn.LongWindow, policy.Spec.SLO.LatencyThresholdMs)
+	slowResult, _ := slo.EvaluateWindowPair(policy.Spec.SLO.Target, slowShortSLI.Value, slowLongSLI.Value, policy.Spec.Detection.SlowBurn)
+
+	if !fastResult.IsConfirmed && !slowResult.IsConfirmed {
 		r.eventf(policy, corev1.EventTypeNormal, "SLORecovered",
-			"SLO recovered to target threshold (SLI: %.4f)", sliResult.Value)
+			"SLO recovered to target threshold (SLI: %.4f)", fastShortSLI.Value)
 
 		err := r.updateStatus(ctx, key, func(p *v1alpha1.RemediationPolicy) {
 			p.Status.Phase = v1alpha1.PhaseHealthy
 			p.Status.TargetPodName = ""
 			p.Status.TargetPodUID = ""
 			p.Status.AttributionReason = ""
-			p.Status.Message = fmt.Sprintf("SLO recovered successfully (SLI: %.4f)", sliResult.Value)
+			p.Status.Message = fmt.Sprintf("SLO recovered successfully (SLI: %.4f)", fastShortSLI.Value)
 		})
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
 	}
 
 	// Still degraded; re-evaluate
@@ -419,7 +423,6 @@ func (r *RemediationPolicyReconciler) reconcileEvaluationHoldoff(ctx context.Con
 	return ctrl.Result{Requeue: true}, nil
 }
 
-// reconcileSystemicHalt re-evaluates telemetry to exit systemic halt if backend recovers
 func (r *RemediationPolicyReconciler) reconcileSystemicHalt(ctx context.Context, key types.NamespacedName, policy *v1alpha1.RemediationPolicy) (ctrl.Result, error) {
 	if r.TelemetryClient == nil {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
@@ -449,7 +452,6 @@ func (r *RemediationPolicyReconciler) countHealthyReplicas(ctx context.Context, 
 
 	var healthy int32
 	for _, pod := range podList.Items {
-		// Ignore terminating pods
 		if pod.DeletionTimestamp != nil {
 			continue
 		}
@@ -458,7 +460,6 @@ func (r *RemediationPolicyReconciler) countHealthyReplicas(ctx context.Context, 
 			continue
 		}
 
-		// Verify Ready condition is True
 		for _, condition := range pod.Status.Conditions {
 			if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
 				healthy++
