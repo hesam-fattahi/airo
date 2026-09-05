@@ -59,29 +59,5 @@ jobs:
           config: deploy/kind-config.yaml
           cluster_name: airo-cluster
 
-      - name: Verify Cluster Nodes
-        run: kubectl get nodes
-
-      - name: Build and Load payment-service Docker image
-        run: |
-          docker build -t payment-service:v1.0 -f examples/payment-service/Dockerfile .
-          kind load docker-image payment-service:v1.0 --name airo-cluster
-
-      - name: Apply CRD and Monitoring Manifests
-        run: |
-          kubectl apply -f config/crd/bases/
-          kubectl apply -f deploy/monitoring/
-
-      - name: Deploy Target Workload
-        run: kubectl apply -f examples/payment-service/k8s-deployment.yaml
-
-      - name: Wait for Target Workload Readiness
-        run: kubectl wait --for=condition=Available deployment/payment-api --timeout=120s
-
-      - name: Apply Sample RemediationPolicy
-        run: kubectl apply -f config/samples/payment_api_policy.yaml
-
-      - name: Verify CRD Policy Existence
-        run: |
-          kubectl get crd remediationpolicies.reliability.airo.io
-          kubectl get remediationpolicy payment-api-policy
+      - name: Execute E2E Integration Test via Makefile
+        run: make e2e-test

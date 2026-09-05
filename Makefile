@@ -2,6 +2,8 @@ BINARY_NAME=airo
 MAIN_PATH=cmd/main.go
 KIND_CLUSTER_NAME=airo-cluster
 KIND_CONFIG=deploy/kind-config.yaml
+OPERATOR_IMAGE=airo:latest
+PAYMENT_IMAGE=payment-service:v1.0
 
 # Local bin directory for tools
 LOCALBIN ?= $(shell pwd)/bin
@@ -15,10 +17,11 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 .PHONY: help build run test clean fmt fmt-check verify vet ci \
 	cluster-up cluster-down cluster-status \
 	port-forward-prom port-forward-grafana \
-	controller-gen generate manifests
+	controller-gen generate manifests \
+	docker-build kind-load deploy-workload e2e-test
 
 help: ## Display available commands
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary
 $(CONTROLLER_GEN): $(LOCALBIN)
@@ -36,6 +39,38 @@ manifests: controller-gen ## Generate CustomResourceDefinition YAML objects
 build: ## Compile the operator binary
 	@echo "Building binary..."
 	@go build -o bin/$(BINARY_NAME) $(MAIN_PATH)
+
+docker-build: ## Build Docker images for AIRO operator and payment service
+	@echo "Building Docker image '$(OPERATOR_IMAGE)'..."
+	@docker build -t $(OPERATOR_IMAGE) .
+	@echo "Building Docker image '$(PAYMENT_IMAGE)'..."
+	@docker build -t $(PAYMENT_IMAGE) -f examples/payment-service/Dockerfile .
+
+kind-load: ## Load local Docker images into KinD cluster
+	@echo "Loading images into KinD cluster '$(KIND_CLUSTER_NAME)'..."
+	@kind load docker-image $(PAYMENT_IMAGE) --name $(KIND_CLUSTER_NAME)
+	@kind load docker-image $(OPERATOR_IMAGE) --name $(KIND_CLUSTER_NAME)
+
+deploy-workload: ## Apply CRDs, RBAC, monitoring, target workload, and AIRO operator
+	@echo "Applying CRDs and RBAC manifests..."
+	@kubectl apply -f config/crd/bases/
+	@kubectl apply -f config/rbac/
+	@echo "Applying monitoring stack..."
+	@kubectl apply -f deploy/monitoring/
+	@echo "Deploying payment microservice and AIRO operator..."
+	@kubectl apply -f examples/payment-service/k8s-deployment.yaml
+	@kubectl apply -f config/manager/deployment.yaml
+
+e2e-test: docker-build kind-load deploy-workload ## Execute full E2E integration test sequence
+	@echo "Applying sample RemediationPolicy..."
+	@kubectl apply -f config/samples/payment_api_policy.yaml
+	@echo "Waiting for Target Workload readiness..."
+	@kubectl wait --for=condition=Available deployment/payment-api --timeout=120s
+	@echo "Waiting for AIRO Operator rollout..."
+	@kubectl rollout status deployment/airo-operator --timeout=60s
+	@echo "Waiting for RemediationPolicy status phase to reach 'Healthy'..."
+	@kubectl wait --for=jsonpath='{.status.phase}'=Healthy remediationpolicy/payment-api-policy --timeout=60s
+	@echo "E2E Integration Test Completed Successfully!"
 
 verify: ## Verify Go module dependencies and ensure go.mod is tidy
 	@echo "Verifying dependencies..."
@@ -68,7 +103,7 @@ test: ## Run unit tests with race detection and no caching
 	@echo "Running unit tests..."
 	@go test -v ./... -race -count=1
 
-ci: fmt-check verify vet test build ## Run all CI validation checks
+ci: fmt-check verify vet test build e2e-test ## Run all CI validation checks
 	@echo "All CI checks passed."
 
 run: ## Run the operator locally
