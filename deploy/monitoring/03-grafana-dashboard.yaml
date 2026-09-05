@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  airo-dashboard.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "id": null,
+      "panels": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "id": 1,
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{app=\"payment-api\"}[5m])) by (le))",
+              "legendFormat": "p99 Latency (s)"
+            }
+          ],
+          "title": "Payment API — p99 Latency",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "id": 2,
+          "targets": [
+            {
+              "expr": "(1 - (sum(rate(http_request_duration_seconds_bucket{app=\"payment-api\",le=\"0.05\"}[5m])) / sum(rate(http_request_duration_seconds_bucket{app=\"payment-api\",le=\"+Inf\"}[5m])))) / 0.01",
+              "legendFormat": "5m Fast Burn Rate"
+            }
+          ],
+          "title": "AIRO — 5m Fast Burn Rate Multiplier",
+          "type": "stat"
+        }
+      ],
+      "refresh": "5s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "title": "AIRO — Autonomous Incident Remediation Dashboard",
+      "uid": "airo-autohealer-dashboard"
+    }
