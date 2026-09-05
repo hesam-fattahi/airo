@@ -4,7 +4,6 @@ import (
 	"flag"
 	"os"
 
-	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -27,7 +26,6 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(discoveryv1.AddToScheme(scheme))
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 }
@@ -36,8 +34,20 @@ func main() {
 	var metricsAddr string
 	var prometheusURL string
 
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8081", "The address the metrics endpoint binds to.")
-	flag.StringVar(&prometheusURL, "prometheus-url", "http://prometheus.monitoring.svc:9090", "Prometheus HTTP API URL")
+	flag.StringVar(
+		&metricsAddr,
+		"metrics-bind-address",
+		":8081",
+		"The address the metrics endpoint binds to.",
+	)
+
+	flag.StringVar(
+		&prometheusURL,
+		"prometheus-url",
+		"http://prometheus.monitoring.svc:9090",
+		"Prometheus HTTP API URL",
+	)
+
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
@@ -55,7 +65,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Fail-fast if telemetry backend cannot be initialized
 	telemetryClient, err := telemetry.NewPrometheusClient(prometheusURL)
 	if err != nil {
 		setupLog.Error(err, "unable to initialize Prometheus telemetry client")
@@ -73,11 +82,22 @@ func main() {
 	}
 
 	if err := reconciler.SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "RemediationPolicy")
+		setupLog.Error(
+			err,
+			"unable to create controller",
+			"controller",
+			"RemediationPolicy",
+		)
 		os.Exit(1)
 	}
 
-	setupLog.Info("Starting controller manager loop", "metricsAddress", metricsAddr, "prometheusURL", prometheusURL)
+	setupLog.Info(
+		"Starting controller manager loop",
+		"metricsAddress",
+		metricsAddr,
+		"prometheusURL",
+		prometheusURL,
+	)
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")

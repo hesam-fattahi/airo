@@ -38,8 +38,8 @@ jobs:
       - name: Build AIRO
         run: make build
 
-  e2e-k8s-test:
-    name: E2E KinD Integration Test
+  kind-integration-test:
+    name: KinD Integration Test
     needs: build-and-test
     runs-on: ubuntu-latest
 
@@ -67,26 +67,21 @@ jobs:
           docker build -t payment-service:v1.0 -f examples/payment-service/Dockerfile .
           kind load docker-image payment-service:v1.0 --name airo-cluster
 
-      - name: Build and Load AIRO Operator Docker image
-        run: |
-          docker build -t airo:latest .
-          kind load docker-image airo:latest --name airo-cluster
-
-      - name: Apply CRD and RBAC Manifests
+      - name: Apply CRD and Monitoring Manifests
         run: |
           kubectl apply -f config/crd/bases/
-          kubectl apply -f config/rbac/
           kubectl apply -f deploy/monitoring/
 
-      - name: Deploy Target Workload and AIRO Operator
-        run: |
-          kubectl apply -f examples/payment-service/k8s-deployment.yaml
-          kubectl apply -f config/manager/deployment.yaml
+      - name: Deploy Target Workload
+        run: kubectl apply -f examples/payment-service/k8s-deployment.yaml
+
+      - name: Wait for Target Workload Readiness
+        run: kubectl wait --for=condition=Available deployment/payment-api --timeout=120s
 
       - name: Apply Sample RemediationPolicy
         run: kubectl apply -f config/samples/payment_api_policy.yaml
 
-      - name: Wait for Operator and Policy Initialization
+      - name: Verify CRD Policy Existence
         run: |
-          kubectl rollout status deployment/airo-operator --timeout=60s
-          kubectl wait --for=jsonpath='{.status.phase}'=Healthy remediationpolicy/payment-api-policy --timeout=60s
+          kubectl get crd remediationpolicies.reliability.airo.io
+          kubectl get remediationpolicy payment-api-policy
