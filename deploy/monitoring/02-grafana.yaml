@@ -20,6 +20,23 @@ spec:
           ports:
             - containerPort: 3000
               name: http
+          volumeMounts:
+            - name: datasource-volume
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider-volume
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboard-json-volume
+              mountPath: /var/lib/grafana/dashboards
+      volumes:
+        - name: datasource-volume
+          configMap:
+            name: grafana-datasource-prometheus
+        - name: dashboard-provider-volume
+          configMap:
+            name: grafana-dashboards-provider
+        - name: dashboard-json-volume
+          configMap:
+            name: grafana-airo-dashboard
 ---
 apiVersion: v1
 kind: Service

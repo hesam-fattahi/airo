@@ -1,10 +1,26 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-dashboards
+  name: grafana-dashboards-provider
   namespace: monitoring
-  labels:
-    grafana_dashboard: "1"
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'airo-dashboards'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-airo-dashboard
+  namespace: monitoring
 data:
   airo-dashboard.json: |
     {
@@ -19,7 +35,7 @@ data:
           "targets": [
             {
               "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{app=\"payment-api\"}[5m])) by (le))",
-              "legendFormat": "p99 Latency (s)"
+              "legendFormat": "p99 Latency (seconds)"
             }
           ],
           "title": "Payment API — p99 Latency",
