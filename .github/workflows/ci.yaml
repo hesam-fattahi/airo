@@ -8,9 +8,12 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
-    name: Build & Test (Unit)
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
@@ -23,20 +26,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Verify dependencies
-        run: make verify
-
-      - name: Check formatting
-        run: make fmt-check
-
-      - name: Run static analysis
-        run: make vet
-
-      - name: Run unit tests
-        run: make test
-
-      - name: Build AIRO
-        run: make build
+      - name: Run CI validation
+        run: make ci
 
   kind-integration-test:
     name: KinD Integration Test
@@ -59,5 +50,5 @@ jobs:
           config: deploy/kind-config.yaml
           cluster_name: airo-cluster
 
-      - name: Execute E2E Integration Test via Makefile
+      - name: Run Kubernetes integration test
         run: make e2e-test
