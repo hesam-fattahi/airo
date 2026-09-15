@@ -14,7 +14,7 @@ PAYMENT_SERVICE_IMAGE := payment-service:v1.0
 PAYMENT_SERVICE_DOCKERFILE := examples/payment-service/Dockerfile
 
 PROMETHEUS_IMAGE := prom/prometheus:v2.51.0
-GRAFANA_IMAGE := grafana/grafana:10.4.0
+GRAFANA_IMAGE := grafana/grafana:10.4.1
 
 MONITORING_NAMESPACE := monitoring
 
