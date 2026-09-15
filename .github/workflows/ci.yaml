@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
-    name: Build & Test
+  validation:
+    name: Validation
     runs-on: ubuntu-latest
 
     steps:
@@ -26,12 +26,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run CI validation
-        run: make ci
+      - name: Static Checks
+        run: make check
 
-  kind-integration-test:
-    name: KinD Integration Test
-    needs: build-and-test
+  unit-test:
+    name: Unit Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -44,11 +43,41 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Create KinD Multi-Node Cluster
-        uses: helm/kind-action@v1.10.0
-        with:
-          config: deploy/kind-config.yaml
-          cluster_name: airo-cluster
+      - name: Run Unit Tests
+        run: make unit-test
 
-      - name: Run Kubernetes integration test
-        run: make e2e-test
+  build:
+    name: Build Operator
+    needs: [validation, unit-test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Operator Binary
+        run: make build
+
+  kind-e2e-test:
+    name: KinD End-to-End Test
+    needs: [validation, unit-test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run KinD E2E Pipeline
+        run: make e2e
