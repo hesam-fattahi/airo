@@ -174,11 +174,16 @@ image-build: ## Build payment-service container image
 	@echo "Building payment-service image..."
 	@"$(DOCKER)" build -t "$(PAYMENT_SERVICE_IMAGE)" -f "$(PAYMENT_SERVICE_DOCKERFILE)" .
 
-image-load: ## Load images into KinD cluster (fails fast on missing images)
+image-load: ## Load images into KinD cluster,except Grafana (fails fast on missing images)
 	@echo "Loading payment-service image into KinD..."
 	@"$(KIND)" load docker-image "$(PAYMENT_SERVICE_IMAGE)" --name "$(KIND_CLUSTER_NAME)"
 	@echo "Loading Prometheus image into KinD..."
 	@"$(KIND)" load docker-image "$(PROMETHEUS_IMAGE)" --name "$(KIND_CLUSTER_NAME)"
+	
+## Separated Grafana image load from others, because the image-load is used in CI pipeline,
+## And Grafana adds unnecessary overhead to the CI pipeline. 
+## 	
+image-load-grafana: ## Load Grafana image into KinD cluster
 	@echo "Loading Grafana image into KinD..."
 	@"$(KIND)" load docker-image "$(GRAFANA_IMAGE)" --name "$(KIND_CLUSTER_NAME)"
 

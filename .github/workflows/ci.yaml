@@ -79,5 +79,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Pull Prometheus image
+        run: docker pull prom/prometheus:v2.51.0
+
       - name: Run KinD E2E Pipeline
         run: make e2e
