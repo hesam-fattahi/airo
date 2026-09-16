@@ -10,7 +10,7 @@ RUN go mod download
 COPY . .
 
 # Build the payment service for Linux.
-RUN CGO_ENABLED=0 GOOS=linux go build -o /payment-service ./examples/payment-service
+RUN CGO_ENABLED=0 GOOS=linux go build -o /payment-service ./example
 
 # Runtime stage
 FROM alpine:3.19
