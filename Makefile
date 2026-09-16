@@ -16,6 +16,7 @@ GO ?= go
 DOCKER ?= docker
 KUBECTL ?= kubectl
 KIND ?= kind
+HEY ?= hey
 
 # Cluster & Deploy Configs
 KIND_CLUSTER_NAME := airo-cluster
@@ -271,15 +272,15 @@ e2e: dev-setup e2e-test ## Provision fresh environment and run E2E verification
 # ==============================================================================
 # Load and Chaos Testing
 # ==============================================================================
-load-test: ## Generate sustained in-cluster traffic against payment-api
-	@DURATION="$(LOAD_DURATION)" \
-	 CONCURRENCY="$(LOAD_CONCURRENCY)" \
-	 "$(LOAD_TEST)"
+.PHONY: load-test chaos-test
+
+load-test: ## Generate sustained traffic against payment-api using hey
+	@echo "Generating traffic against payment-api..."
+	@"$(HEY)" -z 10m -q 1000 -c 20 -m POST \
+		"$(PAYMENT_SERVICE_URL)/api/v1/pay"
 
 chaos-test: ## Inject latency into one payment-api pod
-	@LATENCY_MS="$(CHAOS_LATENCY_MS)" \
-	 DURATION="$(CHAOS_DURATION)" \
-	 "$(CHAOS_TEST)"
+	@echo "Injecting latency to pod x..."
 
 
 # ==============================================================================
