@@ -63,7 +63,7 @@ data:
           },
           "gridPos": {
             "h": 3,
-            "w": 3,
+            "w": 4,
             "x": 0,
             "y": 0
           },
@@ -131,7 +131,7 @@ data:
           "gridPos": {
             "h": 3,
             "w": 5,
-            "x": 3,
+            "x": 4,
             "y": 0
           },
           "id": 2,
@@ -191,8 +191,8 @@ data:
           },
           "gridPos": {
             "h": 3,
-            "w": 3,
-            "x": 8,
+            "w": 4,
+            "x": 9,
             "y": 0
           },
           "id": 3,
@@ -256,8 +256,8 @@ data:
           },
           "gridPos": {
             "h": 3,
-            "w": 3,
-            "x": 11,
+            "w": 4,
+            "x": 13,
             "y": 0
           },
           "id": 4,
@@ -321,8 +321,8 @@ data:
           },
           "gridPos": {
             "h": 3,
-            "w": 3,
-            "x": 14,
+            "w": 4,
+            "x": 17,
             "y": 0
           },
           "id": 5,
@@ -387,7 +387,7 @@ data:
           "gridPos": {
             "h": 3,
             "w": 3,
-            "x": 17,
+            "x": 21,
             "y": 0
           },
           "id": 7,
@@ -416,77 +416,6 @@ data:
             }
           ],
           "title": "Healthy Pods",
-          "type": "stat"
-        },
-        {
-          "datasource": {
-            "type": "-- Grafana --",
-            "uid": "-- Grafana --"
-          },
-          "description": "Current AIRO control-loop phase. Placeholder until the controller phase metric/status is exposed to Prometheus.",
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "fixed"
-              },
-              "mappings": [
-                {
-                  "options": {
-                    "0": {
-                      "color": "green",
-                      "text": "STABLE"
-                    }
-                  },
-                  "type": "value"
-                }
-              ],
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              }
-            },
-            "overrides": []
-          },
-          "gridPos": {
-            "h": 3,
-            "w": 4,
-            "x": 20,
-            "y": 0
-          },
-          "id": 6,
-          "options": {
-            "colorMode": "value",
-            "graphMode": "none",
-            "justifyMode": "center",
-            "orientation": "vertical",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            },
-            "showPercentChange": false,
-            "textMode": "value",
-            "wideLayout": true
-          },
-          "pluginVersion": "10.4.1",
-          "targets": [
-            {
-              "datasource": {
-                "type": "-- Grafana --",
-                "uid": "-- Grafana --"
-              },
-              "queryType": "randomWalk",
-              "refId": "A"
-            }
-          ],
-          "title": "Phase",
           "type": "stat"
         },
         {
@@ -1105,6 +1034,6 @@ data:
       "timezone": "browser",
       "title": "AIRO - SRE Control Loop",
       "uid": "airo-sre",
-      "version": 3,
+      "version": 4,
       "weekStart": ""
     }
