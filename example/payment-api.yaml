@@ -21,9 +21,10 @@ spec:
           image: payment-service:v1.0
           imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 8080
-              name: http
+            - name: http
+              containerPort: 8080
               protocol: TCP
+
           readinessProbe:
             httpGet:
               path: /healthz
@@ -32,6 +33,7 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 3
+
           livenessProbe:
             httpGet:
               path: /healthz
@@ -40,6 +42,7 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
+
           resources:
             requests:
               cpu: "50m"
@@ -49,7 +52,6 @@ spec:
               memory: "128Mi"
 
 ---
-
 apiVersion: v1
 kind: Service
 metadata:

@@ -21,7 +21,7 @@ KIND ?= kind
 KIND_CLUSTER_NAME := airo-cluster
 KIND_CONFIG := deploy/kind-config.yaml
 PAYMENT_SERVICE_IMAGE := payment-service:v1.0
-PAYMENT_SERVICE_DOCKERFILE := examples/payment-service/Dockerfile
+PAYMENT_SERVICE_DOCKERFILE := example/Dockerfile
 PROMETHEUS_IMAGE := prom/prometheus:v2.51.0
 GRAFANA_IMAGE := grafana/grafana:10.4.1
 
@@ -29,12 +29,21 @@ GRAFANA_IMAGE := grafana/grafana:10.4.1
 MONITORING_NAMESPACE := monitoring
 CRD_DIR := config/crd/bases
 MONITORING_DIR := deploy/monitoring
-WORKLOAD_MANIFEST := examples/payment-service/k8s-deployment.yaml
+WORKLOAD_MANIFEST := example/payment-api.yaml
 POLICY_MANIFEST := config/samples/payment_api_policy.yaml
 
 # Code Generation Tools
 CONTROLLER_TOOLS_VERSION ?= v0.16.5
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
+
+# Load and Chaos Test
+TESTS_DIR := tests
+LOAD_TEST := $(TESTS_DIR)/load-test.sh
+CHAOS_TEST := $(TESTS_DIR)/chaos-test.sh
+LOAD_DURATION ?= 300
+LOAD_CONCURRENCY ?= 10
+CHAOS_LATENCY_MS ?= 500
+CHAOS_DURATION ?= 120
 
 
 # ==============================================================================
@@ -112,7 +121,7 @@ check: fmt-check generate-check verify vet ## Run all static checks and validati
 
 
 # ==============================================================================
-# Testing
+# Unit Testing
 # ==============================================================================
 .PHONY: unit-test test
 
@@ -257,6 +266,20 @@ e2e-test: ## Verify active Kubernetes environment health
 	@echo "E2E verification succeeded."
 
 e2e: dev-setup e2e-test ## Provision fresh environment and run E2E verification
+
+
+# ==============================================================================
+# Load and Chaos Testing
+# ==============================================================================
+load-test: ## Generate sustained in-cluster traffic against payment-api
+	@DURATION="$(LOAD_DURATION)" \
+	 CONCURRENCY="$(LOAD_CONCURRENCY)" \
+	 "$(LOAD_TEST)"
+
+chaos-test: ## Inject latency into one payment-api pod
+	@LATENCY_MS="$(CHAOS_LATENCY_MS)" \
+	 DURATION="$(CHAOS_DURATION)" \
+	 "$(CHAOS_TEST)"
 
 
 # ==============================================================================
