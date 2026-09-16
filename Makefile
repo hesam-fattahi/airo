@@ -168,25 +168,30 @@ cluster-status: ## Display cluster node status
 # ==============================================================================
 # Container Images
 # ==============================================================================
-.PHONY: image-build image-load
+.PHONY: image-build image-load-app image-load-prometheus image-load-grafana image-load
 
 image-build: ## Build payment-service container image
 	@echo "Building payment-service image..."
 	@"$(DOCKER)" build -t "$(PAYMENT_SERVICE_IMAGE)" -f "$(PAYMENT_SERVICE_DOCKERFILE)" .
 
-image-load: ## Load images into KinD cluster,except Grafana (fails fast on missing images)
+image-load-app: ## Load images into KinD cluster,except Grafana (fails fast on missing images)
 	@echo "Loading payment-service image into KinD..."
 	@"$(KIND)" load docker-image "$(PAYMENT_SERVICE_IMAGE)" --name "$(KIND_CLUSTER_NAME)"
+
+image-load-prometheus: ## Load Prometheus image into KinD cluster
 	@echo "Loading Prometheus image into KinD..."
-	@"$(KIND)" load docker-image "$(PROMETHEUS_IMAGE)" --name "$(KIND_CLUSTER_NAME)"
-	
-## Separated Grafana image load from others, because the image-load is used in CI pipeline,
-## And Grafana adds unnecessary overhead to the CI pipeline. 
-## 	
+	@docker image save --platform linux/amd64 --output /tmp/prometheus.tar "$(PROMETHEUS_IMAGE)"
+	@"$(KIND)" load image-archive /tmp/prometheus.tar --name "$(KIND_CLUSTER_NAME)"
+
 image-load-grafana: ## Load Grafana image into KinD cluster
 	@echo "Loading Grafana image into KinD..."
-	@"$(KIND)" load docker-image "$(GRAFANA_IMAGE)" --name "$(KIND_CLUSTER_NAME)"
+	@docker image save --platform linux/amd64 --output /tmp/grafana.tar "$(GRAFANA_IMAGE)"
+	@"$(KIND)" load image-archive /tmp/grafana.tar --name "$(KIND_CLUSTER_NAME)"
 
+## Separated Grafana image load from others, because the image-load is used in CI pipeline,
+## Grafana adds unnecessary overhead to the CI pipeline. 
+## 
+image-load: image-load-app image-load-prometheus ## Load all required images into KinD cluster
 
 # ==============================================================================
 # Kubernetes Deployment
