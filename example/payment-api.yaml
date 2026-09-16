@@ -60,7 +60,7 @@ metadata:
   labels:
     app: payment-api
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: payment-api
     airo.io/traffic: enabled
@@ -69,3 +69,4 @@ spec:
       protocol: TCP
       port: 8080
       targetPort: http
+      nodePort: 30080
