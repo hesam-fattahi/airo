@@ -13,8 +13,8 @@ import (
 
 var requestDuration = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
-		Name:    "http_request_duration_seconds",
-		Help:    "HTTP request latency distribution in seconds",
+		Name: "http_request_duration_seconds",
+		Help: "HTTP request latency distribution in seconds",
 		Buckets: []float64{
 			0.0005, // 0.5ms
 			0.001,  // 1ms
