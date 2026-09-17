@@ -23,6 +23,8 @@ KIND_CLUSTER_NAME := airo-cluster
 KIND_CONFIG := deploy/kind-config.yaml
 PAYMENT_SERVICE_IMAGE := payment-service:v1.0
 PAYMENT_SERVICE_DOCKERFILE := example/Dockerfile
+PAYMENT_SERVICE_URL := http://localhost:8080
+PAYMENT_SERVICE_PATH := /api/v1/pay
 PROMETHEUS_IMAGE := prom/prometheus:v2.51.0
 GRAFANA_IMAGE := grafana/grafana:10.4.1
 
@@ -37,14 +39,12 @@ POLICY_MANIFEST := config/samples/payment_api_policy.yaml
 CONTROLLER_TOOLS_VERSION ?= v0.16.5
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
 
-# Load and Chaos Test
-TESTS_DIR := tests
-LOAD_TEST := $(TESTS_DIR)/load-test.sh
-CHAOS_TEST := $(TESTS_DIR)/chaos-test.sh
-LOAD_DURATION ?= 300
-LOAD_CONCURRENCY ?= 10
-CHAOS_LATENCY_MS ?= 500
-CHAOS_DURATION ?= 120
+# Load Test
+LOAD_TEST_DURATION := 10m
+LOAD_TEST_RATE := 1000
+LOAD_TEST_CONCURRENCY := 20
+LOAD_TEST_METHOD := POST
+LOAD_TEST_TIMEOUT := 20
 
 
 # ==============================================================================
@@ -276,8 +276,13 @@ e2e: dev-setup e2e-test ## Provision fresh environment and run E2E verification
 
 load-test: ## Generate sustained traffic against payment-api using hey
 	@echo "Generating traffic against payment-api..."
-	@"$(HEY)" -z 10m -q 1000 -c 20 -m POST \
-		"$(PAYMENT_SERVICE_URL)/api/v1/pay"
+	@"$(HEY)" \
+		-z "$(LOAD_TEST_DURATION)" \
+		-q "$(LOAD_TEST_RATE)" \
+		-c "$(LOAD_TEST_CONCURRENCY)" \
+		-m "$(LOAD_TEST_METHOD)" \
+		-t "$(LOAD_TEST_TIMEOUT)" \
+		"$(PAYMENT_SERVICE_URL)$(PAYMENT_SERVICE_PATH)"
 
 chaos-test: ## Inject latency into one payment-api pod
 	@echo "Injecting latency to pod x..."
