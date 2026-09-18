@@ -518,7 +518,7 @@ data:
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "description": "Total request throughput across all payment-api pods.",
+          "description": "Percentage of requests from each payment-api pod completing within the 50ms SLO threshold. Used to identify localized SLO degradation.",
           "fieldConfig": {
             "defaults": {
               "color": {
@@ -556,22 +556,28 @@ data:
                   "mode": "off"
                 }
               },
-              "decimals": 1,
+              "decimals": 3,
               "mappings": [],
+              "max": 1,
+              "min": 0,
               "thresholds": {
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
+                    "color": "red",
                     "value": null
                   },
                   {
-                    "color": "red",
-                    "value": 80
+                    "color": "yellow",
+                    "value": 0.99
+                  },
+                  {
+                    "color": "green",
+                    "value": 0.999
                   }
                 ]
               },
-              "unit": "reqps"
+              "unit": "percentunit"
             },
             "overrides": []
           },
@@ -586,7 +592,8 @@ data:
             "legend": {
               "calcs": [
                 "lastNotNull",
-                "mean"
+                "mean",
+                "min"
               ],
               "displayMode": "table",
               "placement": "bottom",
@@ -599,12 +606,12 @@ data:
           },
           "targets": [
             {
-              "expr": "sum by (pod) (rate(http_request_duration_seconds_count{app=\"payment-api\"}[5m]))",
+              "expr": "sum by (pod, pod_uid) (rate(http_request_duration_seconds_bucket{app=\"payment-api\",le=\"0.05\"}[5m])) / sum by (pod, pod_uid) (rate(http_request_duration_seconds_bucket{app=\"payment-api\",le=\"+Inf\"}[5m]))",
               "legendFormat": "{{pod}}",
               "refId": "A"
             }
           ],
-          "title": "Request Rate",
+          "title": "Pod SLI",
           "type": "timeseries"
         },
         {
