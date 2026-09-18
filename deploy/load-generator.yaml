@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-load-generator
+  namespace: default
+  labels:
+    app: payment-load-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-load-generator
+  template:
+    metadata:
+      labels:
+        app: payment-load-generator
+    spec:
+      containers:
+        - name: fortio
+          image: fortio/fortio:1.75.2
+          imagePullPolicy: IfNotPresent
+          args:
+            - load
+            - -c
+            - "2000"
+            - -qps
+            - "10000"
+            - -t
+            - "0"
+            - -X
+            - POST
+            - -payload
+            - "{}"
+            - http://payment-api.default.svc.cluster.local:8080/api/v1/pay
