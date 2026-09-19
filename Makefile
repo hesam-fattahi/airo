@@ -187,12 +187,12 @@ deploy-monitoring: ## Deploy Prometheus and Grafana to the cluster
 
 .PHONY: manifests helm-lint helm-template deploy-airo
 
-manifests: controller-gen ## Generate CRD manifests and sync them to the Helm chart
-	$(CONTROLLER_GEN) \
-		crd \
-		paths="./api/..." \
-		output:crd:artifacts:config=$(CRD_DIR)
-	@mkdir -p $(HELM_CRD_DIR)
+manifests: controller-gen ## Generate CRD manifests and sync them to the Helm chart 
+	$(CONTROLLER_GEN) \ 
+	crd:allowDangerousTypes=true \ 
+	paths="./api/..." \ 
+	output:crd:artifacts:config=$(CRD_DIR) 
+	@mkdir -p $(HELM_CRD_DIR) 
 	@cp $(CRD_DIR)/*.yaml $(HELM_CRD_DIR)/
 
 helm-lint: ## Validate the AIRO Helm chart
