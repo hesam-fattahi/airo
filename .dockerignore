@@ -1,0 +1,11 @@
+.git
+.github
+charts
+deploy
+docs
+examples
+test
+config/crd/bases
+*.md
+*.log
+.DS_Store

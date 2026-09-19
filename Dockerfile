@@ -1,22 +1,28 @@
-# Build Stage
-FROM golang:1.27-alpine AS builder
+FROM golang:1.27.1-alpine3.24 AS builder
 
 WORKDIR /app
 
-# Copy dependency manifests
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code
 COPY . .
 
-# Build the AIRO operator static binary
-RUN CGO_ENABLED=0 GOOS=linux go build -o /airo cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux \
+    go build \
+    -trimpath \
+    -ldflags="-s -w" \
+    -o /airo \
+    ./cmd/main.go
 
-# Runtime Stage
-FROM alpine:3.19
+FROM alpine:3.24
+
+RUN apk add --no-cache ca-certificates \
+    && addgroup -S airo \
+    && adduser -S -G airo airo
 
 COPY --from=builder /airo /airo
+
+USER airo
 
 EXPOSE 8081
 
