@@ -1,0 +1,6 @@
+apiVersion: v2
+name: airo
+description: Autonomous incident remediation operator for Kubernetes workloads
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
