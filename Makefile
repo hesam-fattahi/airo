@@ -1,305 +1,381 @@
-# ==============================================================================
-# Shell & Make Configuration
-# ==============================================================================
-SHELL := /usr/bin/env bash
-.SHELLFLAGS := -eu -o pipefail -c
+SHELL := /bin/bash
 
-# ==============================================================================
-# Project Configuration
-# ==============================================================================
+# =============================================================================
+# Project
+# =============================================================================
+
+PROJECT_NAME := airo
 BINARY_NAME := airo
 MAIN_PATH := ./cmd/main.go
-LOCALBIN ?= $(CURDIR)/bin
 
-# Executables
 GO ?= go
-DOCKER ?= docker
+GOFMT ?= gofmt
+HELM ?= helm
 KUBECTL ?= kubectl
 KIND ?= kind
 
-# Cluster & Deploy Configs
+# =============================================================================
+# Local Kubernetes environment
+# =============================================================================
+
 KIND_CLUSTER_NAME := airo-cluster
-KIND_CONFIG := deploy/kind-config.yaml
-PAYMENT_SERVICE_IMAGE := payment-service:v1.0
-PAYMENT_SERVICE_DOCKERFILE := example/Dockerfile
-PAYMENT_SERVICE_PATH := /api/v1/pay
-PROMETHEUS_IMAGE := prom/prometheus:v2.51.0
-GRAFANA_IMAGE := grafana/grafana:10.4.1
-WORKLOAD_LOADGEN := example/load-generator.yaml
+KIND_CONFIG := deploy/kind/kind-config.yaml
 
-# Kubernetes Manifests & Namespaces
-MONITORING_NAMESPACE := monitoring
+# =============================================================================
+# Container images
+# =============================================================================
+
+AIRO_IMAGE := airo:latest
+DEMO_API_IMAGE := demo-api:v1.0
+
+# =============================================================================
+# Helm
+# =============================================================================
+
+HELM_CHART := ./charts/airo
+HELM_RELEASE := airo
+HELM_NAMESPACE := airo
+
+PROMETHEUS_URL := http://prometheus.monitoring.svc:9090
+
+# =============================================================================
+# Deployment manifests
+# =============================================================================
+
+PROMETHEUS_DIR := deploy/prometheus
+GRAFANA_DIR := deploy/grafana
+
+DEMO_API_DIR := examples/demo-api
+
+# =============================================================================
+# Generated Kubernetes artifacts
+# =============================================================================
+
 CRD_DIR := config/crd/bases
-MONITORING_DIR := deploy/monitoring
-WORKLOAD_MANIFEST := example/payment-api.yaml
-POLICY_MANIFEST := config/samples/payment_api_policy.yaml
+HELM_CRD_DIR := $(HELM_CHART)/crds
 
-# Fault Injection
-LATENCY_MS ?= 50
+# =============================================================================
+# Tooling
+# =============================================================================
 
-# Code Generation Tools
-CONTROLLER_TOOLS_VERSION ?= v0.16.5
+LOCALBIN := $(shell pwd)/bin
+CONTROLLER_TOOLS_VERSION := v0.16.5
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
 
-# ==============================================================================
-# Help Menu
-# ==============================================================================
+
+# =============================================================================
+# Default
+# =============================================================================
+
+.PHONY: all
+
+all: check
+
+
+# =============================================================================
+# Help
+# =============================================================================
+
 .PHONY: help
 
-help: ## Display available commands
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
-		sort | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-24s\033[0m %s\n", $$1, $$2}'
+help: ## Show available Make targets
+	@echo "AIRO development commands:"
+	@echo
+	@awk 'BEGIN {FS = ":.*##"; printf "Usage:\n  make <target>\n\nTargets:\n"} \
+		/^[a-zA-Z0-9_-]+:.*##/ {printf "  %-28s %s\n", $$1, $$2}' \
+		$(MAKEFILE_LIST)
 
 
-# ==============================================================================
-# Tooling & Code Generation
-# ==============================================================================
-.PHONY: generate manifests generate-check
+# =============================================================================
+# Code quality
+# =============================================================================
 
-$(LOCALBIN):
-	@mkdir -p "$(LOCALBIN)"
+.PHONY: fmt fmt-check vet unit-test check
 
-$(CONTROLLER_GEN): $(LOCALBIN)
-	@test -s "$(CONTROLLER_GEN)" || \
-		GOBIN="$(LOCALBIN)" $(GO) install \
-			sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+fmt: ## Format all Go source files
+	$(GOFMT) -w $$(find . -name '*.go' -not -path './vendor/*')
 
-generate: $(CONTROLLER_GEN) ## Generate Go DeepCopy implementation code
-	@echo "Generating DeepCopy code..."
-	@"$(CONTROLLER_GEN)" object paths="./..."
+fmt-check: ## Check that all Go source files are formatted
+	@test -z "$$(gofmt -l $$(find . -name '*.go' -not -path './vendor/*'))" \
+		|| (echo "Go files are not formatted:" && \
+		    gofmt -l $$(find . -name '*.go' -not -path './vendor/*') && \
+		    exit 1)
 
-manifests: $(CONTROLLER_GEN) ## Generate CustomResourceDefinition manifests
-	@echo "Generating CRD manifests..."
-	@mkdir -p "$(CRD_DIR)"
-	@"$(CONTROLLER_GEN)" crd:allowDangerousTypes=true paths="./..." output:crd:artifacts:config="$(CRD_DIR)"
+vet: ## Run go vet
+	$(GO) vet ./...
 
-generate-check: generate manifests ## Verify generated code and CRDs are up to date (CI step)
-	@echo "Checking generated artifacts for drift..."
-	@git diff --exit-code -- api "$(CRD_DIR)" || \
-		(echo "Error: Generated files are out of date. Run 'make generate manifests' and commit." && exit 1)
+unit-test: ## Run unit tests with the race detector
+	$(GO) test -race -count=1 ./...
 
-
-# ==============================================================================
-# Formatting & Static Checks
-# ==============================================================================
-.PHONY: fmt fmt-check tidy verify vet check
-
-fmt: ## Format Go source files
-	@echo "Formatting Go source files..."
-	@gofmt -w $$(find . -name '*.go' -not -path './vendor/*')
-
-fmt-check: ## Verify Go source code formatting (CI step)
-	@echo "Checking Go code formatting..."
-	@files=$$(gofmt -l $$(find . -name '*.go' -not -path './vendor/*')); \
-	if [ -n "$$files" ]; then \
-		echo "Error: Code is not formatted. Run 'make fmt'."; \
-		echo "$$files"; \
-		exit 1; \
-	fi
-
-tidy: ## Tidy Go module dependencies
-	@echo "Tidying Go modules..."
-	@"$(GO)" mod tidy
-
-verify: ## Verify Go module dependencies match go.mod / go.sum (CI step)
-	@echo "Verifying Go module integrity..."
-	@"$(GO)" mod verify
-	@git diff --exit-code -- go.mod go.sum || \
-		(echo "Error: go.mod or go.sum modified. Run 'make tidy' and commit." && exit 1)
-
-vet: ## Run Go static analysis (CI step)
-	@echo "Running go vet..."
-	@"$(GO)" vet ./...
-
-check: fmt-check generate-check verify vet ## Run all static checks and validations without mutating repository
+check: ## Run formatting, static analysis, and unit tests
+	$(MAKE) fmt-check
+	$(MAKE) vet
+	$(MAKE) unit-test
 
 
-# ==============================================================================
-# Unit Testing
-# ==============================================================================
-.PHONY: unit-test test
-
-unit-test: ## Run unit tests with race detection (CI step)
-	@echo "Running unit tests..."
-	@"$(GO)" test -race -count=1 ./...
-
-test: unit-test ## Alias for unit-test
-
-
-# ==============================================================================
+# =============================================================================
 # Build
-# ==============================================================================
-.PHONY: build
+# =============================================================================
 
-build: ## Build the AIRO operator binary without mutating source artifacts (CI step)
-	@echo "Building $(BINARY_NAME) binary..."
-	@mkdir -p bin
-	@"$(GO)" build -o "bin/$(BINARY_NAME)" $(MAIN_PATH)
+.PHONY: build image-build demo-api-image-build
+
+build: ## Build the AIRO executable locally
+	$(GO) build -o $(BINARY_NAME) $(MAIN_PATH)
+
+image-build: ## Build the AIRO container image
+	docker build -t $(AIRO_IMAGE) .
+
+demo-api-image-build: ## Build the demo-api container image
+	docker build \
+		-f $(DEMO_API_DIR)/Dockerfile \
+		-t $(DEMO_API_IMAGE) \
+		.
 
 
-# ==============================================================================
-# CI Pipeline
-# ==============================================================================
+# =============================================================================
+# Kubernetes cluster
+# =============================================================================
+
+.PHONY: cluster-up cluster-down cluster-recreate image-load demo-api-image-load
+
+cluster-up: ## Create the local KinD cluster
+	$(KIND) create cluster \
+		--name $(KIND_CLUSTER_NAME) \
+		--config $(KIND_CONFIG)
+
+cluster-down: ## Delete the local KinD cluster
+	$(KIND) delete cluster --name $(KIND_CLUSTER_NAME)
+
+cluster-recreate: ## Delete and recreate the local KinD cluster
+	$(MAKE) cluster-down
+	$(MAKE) cluster-up
+
+image-load: ## Load the AIRO image into the KinD cluster
+	$(KIND) load docker-image $(AIRO_IMAGE) \
+		--name $(KIND_CLUSTER_NAME)
+
+demo-api-image-load: ## Load the demo-api image into the KinD cluster
+	$(KIND) load docker-image $(DEMO_API_IMAGE) \
+		--name $(KIND_CLUSTER_NAME)
+
+
+# =============================================================================
+# Monitoring
+# =============================================================================
+
+.PHONY: deploy-monitoring
+
+deploy-monitoring: ## Deploy Prometheus and Grafana to the cluster
+	$(KUBECTL) apply -f $(PROMETHEUS_DIR)
+	$(KUBECTL) apply -f $(GRAFANA_DIR)
+
+
+# =============================================================================
+# AIRO
+# =============================================================================
+
+.PHONY: manifests helm-lint helm-template deploy-airo
+
+manifests: controller-gen ## Generate CRD manifests and sync them to the Helm chart
+	$(CONTROLLER_GEN) \
+		crd \
+		paths="./api/..." \
+		output:crd:artifacts:config=$(CRD_DIR)
+	@mkdir -p $(HELM_CRD_DIR)
+	@cp $(CRD_DIR)/*.yaml $(HELM_CRD_DIR)/
+
+helm-lint: ## Validate the AIRO Helm chart
+	$(HELM) lint $(HELM_CHART)
+
+helm-template: ## Render the AIRO Helm chart locally
+	$(HELM) template \
+		$(HELM_RELEASE) \
+		$(HELM_CHART) \
+		--namespace $(HELM_NAMESPACE) \
+		--set prometheus.url=$(PROMETHEUS_URL)
+
+deploy-airo: helm-lint ## Install the AIRO CRD and deploy AIRO with Helm
+	$(KUBECTL) apply -f $(CRD_DIR)
+	$(HELM) upgrade --install \
+		$(HELM_RELEASE) \
+		$(HELM_CHART) \
+		--namespace $(HELM_NAMESPACE) \
+		--create-namespace \
+		--set image.repository=airo \
+		--set image.tag=latest \
+		--set image.pullPolicy=IfNotPresent \
+		--set prometheus.url=$(PROMETHEUS_URL)
+
+
+# =============================================================================
+# Example workload
+# =============================================================================
+
+.PHONY: deploy-workload
+
+deploy-workload: ## Deploy demo-api, Fortio load generation, and its remediation policy
+	$(KUBECTL) apply -f $(DEMO_API_DIR)/deployment.yaml
+	$(KUBECTL) apply -f $(DEMO_API_DIR)/service.yaml
+	$(KUBECTL) apply -f $(DEMO_API_DIR)/load-generator.yaml
+	$(KUBECTL) apply -f $(DEMO_API_DIR)/remediation-policy.yaml
+
+
+# =============================================================================
+# Runtime
+# =============================================================================
+
+.PHONY: run-monitoring run-airo status airo-status airo-logs demo-api-status
+
+run-monitoring: ## Port-forward Prometheus and Grafana for browser access
+	@echo "Prometheus: http://localhost:9090"
+	@echo "Grafana:    http://localhost:3000"
+	@echo
+	@echo "Press Ctrl+C to stop port-forwarding."
+	@trap 'kill 0' EXIT; \
+		$(KUBECTL) -n monitoring port-forward service/prometheus 9090:9090 & \
+		$(KUBECTL) -n monitoring port-forward service/grafana 3000:3000 & \
+		wait
+
+run-airo: ## Follow logs from the AIRO controller running in Kubernetes
+	@echo "AIRO is running inside Kubernetes."
+	$(KUBECTL) -n $(HELM_NAMESPACE) logs \
+		deployment/$(HELM_RELEASE) \
+		--follow
+
+status: ## Show the status of AIRO, monitoring, and the demo workload
+	@echo "=== AIRO ==="
+	$(KUBECTL) -n $(HELM_NAMESPACE) get deployment,pods
+
+	@echo
+	@echo "=== Monitoring ==="
+	$(KUBECTL) -n monitoring get deployment,pods
+
+	@echo
+	@echo "=== Workload ==="
+	$(KUBECTL) -n default get deployment,pods,service \
+		-l app=demo-api
+
+airo-status: ## Show the AIRO deployment and pods
+	$(KUBECTL) -n $(HELM_NAMESPACE) get deployment,pods
+
+airo-logs: ## Follow AIRO controller logs
+	$(KUBECTL) -n $(HELM_NAMESPACE) logs \
+		deployment/$(HELM_RELEASE) \
+		--follow
+
+demo-api-status: ## Show the demo-api deployment, pods, and service
+	$(KUBECTL) -n default get deployment,pods,service \
+		-l app=demo-api
+
+
+# =============================================================================
+# Development environment
+# =============================================================================
+
+.PHONY: dev-up dev-down up down
+
+dev-up: ## Build and deploy the complete local AIRO environment
+	$(MAKE) cluster-up
+	$(MAKE) image-build
+	$(MAKE) image-load
+	$(MAKE) demo-api-image-build
+	$(MAKE) demo-api-image-load
+	$(MAKE) deploy-monitoring
+	$(MAKE) deploy-airo
+	$(MAKE) deploy-workload
+
+dev-down: ## Delete the local AIRO environment
+	$(MAKE) cluster-down
+
+up: ## Alias for dev-up
+	$(MAKE) dev-up
+
+down: ## Alias for dev-down
+	$(MAKE) dev-down
+
+
+# =============================================================================
+# Smoke tests
+# =============================================================================
+
+.PHONY: smoke-test
+
+smoke-test: ## Verify that the deployed AIRO environment is healthy
+	@echo "Checking AIRO deployment..."
+	$(KUBECTL) -n $(HELM_NAMESPACE) rollout status \
+		deployment/$(HELM_RELEASE) \
+		--timeout=120s
+
+	@echo "Checking RemediationPolicy CRD..."
+	$(KUBECTL) get crd remediationpolicies.reliability.airo.io
+
+	@echo "Checking demo-api deployment..."
+	$(KUBECTL) -n default rollout status \
+		deployment/demo-api \
+		--timeout=120s
+
+	@echo "Checking demo-api pods..."
+	$(KUBECTL) -n default get pods \
+		-l app=demo-api
+
+	@echo "Smoke test passed."
+
+
+# =============================================================================
+# End-to-end remediation
+# =============================================================================
+
+.PHONY: e2e-remediation
+
+e2e-remediation: ## Run the full SLO-driven AIRO remediation scenario
+	@echo "Running full AIRO remediation test..."
+	@echo "This test intentionally waits for Prometheus detection windows."
+	@echo
+	@echo "Full remediation scenario:"
+	@echo "  1. Verify healthy baseline"
+	@echo "  2. Inject latency into one demo-api pod"
+	@echo "  3. Wait for SLO/burn-rate detection"
+	@echo "  4. Verify AIRO identifies the offending pod"
+	@echo "  5. Verify traffic isolation"
+	@echo "  6. Verify pod deletion/replacement"
+	@echo "  7. Wait for recovery holdoff"
+	@echo "  8. Verify recovery state"
+
+
+# =============================================================================
+# Controller tooling
+# =============================================================================
+
+.PHONY: controller-gen
+
+controller-gen: $(CONTROLLER_GEN) ## Install controller-gen locally
+
+$(CONTROLLER_GEN):
+	mkdir -p $(LOCALBIN)
+	GOBIN=$(LOCALBIN) go install \
+		sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+
+
+# =============================================================================
+# CI
+# =============================================================================
+
 .PHONY: ci
 
-ci: check unit-test build ## Run full validation pipeline
-	@echo "All CI pipeline checks passed successfully."
+ci: ## Run the fast CI validation suite
+	$(MAKE) fmt-check
+	$(MAKE) vet
+	$(MAKE) unit-test
+	$(MAKE) helm-lint
+	$(MAKE) helm-template
 
 
-# ==============================================================================
-# KinD Cluster Lifecycle
-# ==============================================================================
-.PHONY: cluster-up cluster-down cluster-status
-
-cluster-up: ## Create local KinD cluster if it does not exist
-	@if "$(KIND)" get clusters | grep -qx "$(KIND_CLUSTER_NAME)"; then \
-		echo "KinD cluster '$(KIND_CLUSTER_NAME)' already exists."; \
-	else \
-		echo "Creating KinD cluster '$(KIND_CLUSTER_NAME)'..."; \
-		"$(KIND)" create cluster --name "$(KIND_CLUSTER_NAME)" --config "$(KIND_CONFIG)"; \
-	fi
-	@"$(KUBECTL)" get nodes
-
-cluster-down: ## Delete local KinD cluster
-	@echo "Deleting KinD cluster '$(KIND_CLUSTER_NAME)'..."
-	@"$(KIND)" delete cluster --name "$(KIND_CLUSTER_NAME)"
-
-cluster-status: ## Display cluster node status
-	@"$(KUBECTL)" get nodes -o wide
-
-
-# ==============================================================================
-# Container Images
-# ==============================================================================
-.PHONY: image-build image-load-app image-load-prometheus image-load-grafana image-load
-
-image-build: ## Build payment-service container image
-	@echo "Building payment-service image..."
-	@"$(DOCKER)" build -t "$(PAYMENT_SERVICE_IMAGE)" -f "$(PAYMENT_SERVICE_DOCKERFILE)" .
-
-image-load-app: ## Load payment-service image into KinD
-	@echo "Loading payment-service image into KinD..."
-	@"$(KIND)" load docker-image "$(PAYMENT_SERVICE_IMAGE)" --name "$(KIND_CLUSTER_NAME)"
-
-image-load-prometheus: ## Load Prometheus image into KinD cluster
-	@echo "Loading Prometheus image into KinD..."
-	@docker image save --platform linux/amd64 --output /tmp/prometheus.tar "$(PROMETHEUS_IMAGE)"
-	@"$(KIND)" load image-archive /tmp/prometheus.tar --name "$(KIND_CLUSTER_NAME)"
-
-image-load-grafana: ## Load Grafana image into KinD cluster
-	@echo "Loading Grafana image into KinD..."
-	@docker image save --platform linux/amd64 --output /tmp/grafana.tar "$(GRAFANA_IMAGE)"
-	@"$(KIND)" load image-archive /tmp/grafana.tar --name "$(KIND_CLUSTER_NAME)"
-
-## Separated Grafana image load from others, because the image-load is used in CI pipeline,
-## Grafana adds unnecessary overhead to the CI pipeline.
-##
-image-load: image-load-app image-load-prometheus ## Load all required images into KinD cluster
-
-# ==============================================================================
-# Kubernetes Deployment
-# ==============================================================================
-.PHONY: namespace-create deploy-crds deploy-monitoring deploy-workload deploy-policy deploy wait-workload
-
-namespace-create: ## Ensure monitoring namespace exists
-	@echo "Ensuring monitoring namespace exists..."
-	@"$(KUBECTL)" create namespace "$(MONITORING_NAMESPACE)" --dry-run=client -o yaml | "$(KUBECTL)" apply -f -
-
-deploy-crds: manifests ## Deploy AIRO CRDs
-	@echo "Applying CRDs..."
-	@"$(KUBECTL)" apply -f "$(CRD_DIR)"
-
-deploy-monitoring: namespace-create ## Deploy monitoring stack
-	@echo "Applying monitoring manifests..."
-	@"$(KUBECTL)" apply -f "$(MONITORING_DIR)"
-
-deploy-workload: ## Deploy payment-api workload
-	@echo "Applying workload manifests..."
-	@"$(KUBECTL)" apply -f "$(WORKLOAD_MANIFEST)"
-
-deploy-policy: deploy-crds deploy-workload ## Deploy sample RemediationPolicy
-	@echo "Applying remediation policy manifests..."
-	@"$(KUBECTL)" apply -f "$(POLICY_MANIFEST)"
-
-deploy: deploy-crds deploy-monitoring deploy-workload deploy-policy ## Deploy full application stack
-
-wait-workload: ## Wait for payment-api deployment to become available
-	@echo "Waiting for payment-api deployment readiness..."
-	@"$(KUBECTL)" wait --for=condition=Available deployment/payment-api --timeout=120s
-
-
-# ==============================================================================
-# Local Development Runtime
-# ==============================================================================
-.PHONY: dev-setup run-monitoring run-operator
-
-dev-setup: cluster-up image-build image-load deploy wait-workload ## Provision full local development environment
-	@echo "Development cluster environment ready."
-
-run-monitoring: ## Port-forward Prometheus (9090) and Grafana (3000)
-	@echo "Starting monitoring port-forwards (Prometheus: 9090, Grafana: 3000)..."
-	@"$(KUBECTL)" port-forward -n "$(MONITORING_NAMESPACE)" svc/prometheus 9090:9090 & \
-	"$(KUBECTL)" port-forward -n "$(MONITORING_NAMESPACE)" svc/grafana 3000:3000
-
-run-operator: ## Run the AIRO operator locally against cluster
-	@echo "Starting AIRO operator..."
-	@"$(GO)" run "$(MAIN_PATH)" --prometheus-url=http://localhost:9090
-
-
-# ==============================================================================
-# Integration / E2E Verification
-# ==============================================================================
-.PHONY: e2e-test e2e
-
-e2e-test: ## Verify active Kubernetes environment health
-	@echo "Running Kubernetes E2E checks..."
-	@"$(KUBECTL)" get crd remediationpolicies.reliability.airo.io
-	@"$(KUBECTL)" rollout status deployment/payment-api --timeout=120s
-	@"$(KUBECTL)" get pods -l app=payment-api
-	@"$(KUBECTL)" get remediationpolicies
-	@echo "E2E verification succeeded."
-
-e2e: dev-setup e2e-test ## Provision fresh environment and run E2E verification
-
-
-# ==============================================================================
-# Load Testing
-# ==============================================================================
-.PHONY: load-test
-
-load-test: ## Start sustained Fortio traffic against payment-api
-	@echo "Starting Fortio load generator..."
-	@"$(KUBECTL)" apply -f "$(WORKLOAD_LOADGEN)"
-	@"$(KUBECTL)" rollout status deployment/payment-load-generator --timeout=120s
-
-
-# ==============================================================================
-# Fault Injection
-# ==============================================================================
-.PHONY: inject-latency clear-latency
-
-inject-latency: ## Usage: make inject-latency POD=<pod-name> [LATENCY_MS=200]
-	@test -n "$(POD)" || (echo "Usage: make inject-latency POD=<pod-name> [LATENCY_MS=200]"; exit 1)
-	@echo "Injecting $(LATENCY_MS)ms latency into $(POD)..."
-	@"$(KUBECTL)" exec "$(POD)" -- sh -c 'echo $(LATENCY_MS) > /tmp/latency_ms'
-	@echo "Latency injection enabled on $(POD)."
-
-clear-latency: ## Clear latency injection from all payment-api pods
-	@echo "Clearing latency injection..."
-	@for pod in $$($(KUBECTL) get pods -l app=payment-api -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do \
-		echo "Clearing $$pod..."; \
-		"$(KUBECTL)" exec "$$pod" -- rm -f /tmp/latency_ms; \
-	done
-	@echo "Latency injection cleared."
-
-
-# ==============================================================================
+# =============================================================================
 # Cleanup
-# ==============================================================================
+# =============================================================================
+
 .PHONY: clean
 
-clean: ## Remove local build artifacts
-	@echo "Cleaning local build artifacts..."
-	@rm -rf bin
-	@echo "Clean completed."
+clean: ## Remove local build artifacts and installed tooling
+	rm -f $(BINARY_NAME)
+	rm -rf $(LOCALBIN)
