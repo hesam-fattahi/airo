@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: payment-load-generator
+  name: demo-api-load-generator
   namespace: default
   labels:
-    app: payment-load-generator
+    app: demo-api-load-generator
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: payment-load-generator
+      app: demo-api-load-generator
   template:
     metadata:
       labels:
-        app: payment-load-generator
+        app: demo-api-load-generator
     spec:
       containers:
         - name: fortio
@@ -27,8 +27,4 @@ spec:
             - "5000"
             - -t
             - "0"
-            - -X
-            - POST
-            - -payload
-            - "{}"
-            - http://payment-api.default.svc.cluster.local:8080/api/v1/pay
+            - http://demo-api.default.svc.cluster.local:8080/api/v1/message

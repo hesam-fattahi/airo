@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: payment-api
+  name: demo-api
   namespace: default
   labels:
-    app: payment-api
+    app: demo-api
 spec:
   replicas: 4
   selector:
     matchLabels:
-      app: payment-api
+      app: demo-api
   template:
     metadata:
       labels:
-        app: payment-api
+        app: demo-api
         airo.io/traffic: enabled
     spec:
       containers:
-        - name: payment-api
-          image: payment-service:v1.0
+        - name: demo-api
+          image: demo-api:v1.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -55,14 +55,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: payment-api
+  name: demo-api
   namespace: default
   labels:
-    app: payment-api
+    app: demo-api
 spec:
   type: NodePort
   selector:
-    app: payment-api
+    app: demo-api
     airo.io/traffic: enabled
   ports:
     - name: http
