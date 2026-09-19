@@ -34,6 +34,9 @@ MONITORING_DIR := deploy/monitoring
 WORKLOAD_MANIFEST := example/payment-api.yaml
 POLICY_MANIFEST := config/samples/payment_api_policy.yaml
 
+# Fault Injection
+LATENCY_MS ?= 200
+
 # Code Generation Tools
 CONTROLLER_TOOLS_VERSION ?= v0.16.5
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
@@ -60,7 +63,7 @@ $(LOCALBIN):
 $(CONTROLLER_GEN): $(LOCALBIN)
 	@test -s "$(CONTROLLER_GEN)" || \
 		GOBIN="$(LOCALBIN)" $(GO) install \
-		sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+			sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 generate: $(CONTROLLER_GEN) ## Generate Go DeepCopy implementation code
 	@echo "Generating DeepCopy code..."
@@ -169,13 +172,13 @@ cluster-status: ## Display cluster node status
 # ==============================================================================
 # Container Images
 # ==============================================================================
-.PHONY: image-build image-load-app image-load-prometheus image-load-grafana image-load-chaos image-load
+.PHONY: image-build image-load-app image-load-prometheus image-load-grafana image-load
 
 image-build: ## Build payment-service container image
 	@echo "Building payment-service image..."
 	@"$(DOCKER)" build -t "$(PAYMENT_SERVICE_IMAGE)" -f "$(PAYMENT_SERVICE_DOCKERFILE)" .
 
-image-load-app: ## Load images into KinD cluster,except Grafana (fails fast on missing images)
+image-load-app: ## Load payment-service image into KinD
 	@echo "Loading payment-service image into KinD..."
 	@"$(KIND)" load docker-image "$(PAYMENT_SERVICE_IMAGE)" --name "$(KIND_CLUSTER_NAME)"
 
@@ -190,14 +193,14 @@ image-load-grafana: ## Load Grafana image into KinD cluster
 	@"$(KIND)" load image-archive /tmp/grafana.tar --name "$(KIND_CLUSTER_NAME)"
 
 ## Separated Grafana image load from others, because the image-load is used in CI pipeline,
-## Grafana adds unnecessary overhead to the CI pipeline. 
-## 
+## Grafana adds unnecessary overhead to the CI pipeline.
+##
 image-load: image-load-app image-load-prometheus ## Load all required images into KinD cluster
 
 # ==============================================================================
 # Kubernetes Deployment
 # ==============================================================================
-.PHONY: namespace-create deploy-crds deploy-monitoring deploy-workload deploy-policy deploy-chaos deploy wait-workload
+.PHONY: namespace-create deploy-crds deploy-monitoring deploy-workload deploy-policy deploy wait-workload
 
 namespace-create: ## Ensure monitoring namespace exists
 	@echo "Ensuring monitoring namespace exists..."
@@ -261,13 +264,34 @@ e2e: dev-setup e2e-test ## Provision fresh environment and run E2E verification
 
 
 # ==============================================================================
-# Load and Chaos Testing
+# Load Testing
 # ==============================================================================
 .PHONY: load-test
 
-load-test: ## Generate sustained traffic against payment-api using fortio
-	@echo "Generating traffic against payment-api..."
+load-test: ## Start sustained Fortio traffic against payment-api
+	@echo "Starting Fortio load generator..."
 	@"$(KUBECTL)" apply -f "$(WORKLOAD_LOADGEN)"
+	@"$(KUBECTL)" rollout status deployment/payment-load-generator --timeout=120s
+
+
+# ==============================================================================
+# Fault Injection
+# ==============================================================================
+.PHONY: inject-latency clear-latency
+
+inject-latency: ## Usage: make inject-latency POD=<pod-name> [LATENCY_MS=200]
+	@test -n "$(POD)" || (echo "Usage: make inject-latency POD=<pod-name> [LATENCY_MS=200]"; exit 1)
+	@echo "Injecting $(LATENCY_MS)ms latency into $(POD)..."
+	@"$(KUBECTL)" exec "$(POD)" -- sh -c 'echo $(LATENCY_MS) > /tmp/latency_ms'
+	@echo "Latency injection enabled on $(POD)."
+
+clear-latency: ## Clear latency injection from all payment-api pods
+	@echo "Clearing latency injection..."
+	@for pod in $$($(KUBECTL) get pods -l app=payment-api -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do \
+		echo "Clearing $$pod..."; \
+		"$(KUBECTL)" exec "$$pod" -- rm -f /tmp/latency_ms; \
+	done
+	@echo "Latency injection cleared."
 
 
 # ==============================================================================
