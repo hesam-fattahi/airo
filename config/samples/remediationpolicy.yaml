@@ -1,0 +1,53 @@
+apiVersion: reliability.airo.io/v1alpha1
+kind: RemediationPolicy
+metadata:
+  name: example-remediation-policy
+  namespace: default
+spec:
+  # Kubernetes Deployment that AIRO monitors and may remediate.
+  targetRef:
+    name: example-app
+
+  # Service-level objective configuration.
+  slo:
+    # 99% of requests must satisfy the latency threshold.
+    target: 0.99
+
+    # Requests completing within this latency are considered good.
+    latencyThresholdMs: 50
+
+  # Multi-window burn-rate detection.
+  detection:
+    fastBurn:
+      # Short window detects recent severe degradation.
+      shortWindow: "5m"
+
+      # Long window confirms the degradation is sustained.
+      longWindow: "1h"
+
+      # Burn-rate threshold for fast-burn detection.
+      threshold: 14.4
+
+    slowBurn:
+      # Longer window detects less severe but sustained degradation.
+      shortWindow: "30m"
+
+      # Long window provides the broader error-budget context.
+      longWindow: "6h"
+
+      # Burn-rate threshold for slow-burn detection.
+      threshold: 6.0
+
+  # Safety controls that bound autonomous remediation.
+  safety:
+    # AIRO will not remediate unless this many healthy replicas remain.
+    minHealthyReplicas: 2
+
+    # Minimum time between remediation actions.
+    cooldownDuration: "5m"
+
+    # Maximum number of remediation actions allowed in the window.
+    maxRemediationsPerWindow: 2
+
+    # Time window used to track the remediation budget.
+    remediationWindow: "1h"
