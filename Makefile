@@ -35,7 +35,7 @@ WORKLOAD_MANIFEST := example/payment-api.yaml
 POLICY_MANIFEST := config/samples/payment_api_policy.yaml
 
 # Fault Injection
-LATENCY_MS ?= 200
+LATENCY_MS ?= 50
 
 # Code Generation Tools
 CONTROLLER_TOOLS_VERSION ?= v0.16.5

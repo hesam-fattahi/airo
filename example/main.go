@@ -2,14 +2,20 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+const latencyFaultFile = "/tmp/latency_ms"
 
 var requestDuration = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
@@ -33,6 +39,8 @@ var requestDuration = prometheus.NewHistogramVec(
 	[]string{"path", "status"},
 )
 
+var injectedLatencyMs atomic.Int64
+
 func init() {
 	prometheus.MustRegister(requestDuration)
 }
@@ -42,6 +50,8 @@ type paymentResponse struct {
 }
 
 func main() {
+	go watchLatencyFault()
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/v1/pay", handlePay)
@@ -61,6 +71,52 @@ func main() {
 	}
 }
 
+// watchLatencyFault watches a local file for a latency value in milliseconds.
+//
+// The file is intentionally local to the container, which means the fault
+// affects only the individual Pod where the file is changed.
+//
+// Example:
+//
+//	echo 200 > /tmp/latency_ms
+//
+// Clearing the file disables the injected latency:
+//
+//	rm -f /tmp/latency_ms
+func watchLatencyFault() {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		updateInjectedLatency()
+
+		<-ticker.C
+	}
+}
+
+func updateInjectedLatency() {
+	data, err := os.ReadFile(latencyFaultFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			injectedLatencyMs.Store(0)
+			return
+		}
+
+		log.Printf("failed to read %s: %v", latencyFaultFile, err)
+		return
+	}
+
+	value := strings.TrimSpace(string(data))
+
+	latencyMs, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || latencyMs < 0 {
+		log.Printf("invalid latency value in %s: %q", latencyFaultFile, value)
+		return
+	}
+
+	injectedLatencyMs.Store(latencyMs)
+}
+
 func handlePay(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	status := http.StatusOK
@@ -76,6 +132,13 @@ func handlePay(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusMethodNotAllowed
 		http.Error(w, "method not allowed", status)
 		return
+	}
+
+	// Apply the currently configured latency only to the business endpoint.
+	// Health checks remain fast so Kubernetes does not restart the Pod merely
+	// because it is intentionally degraded.
+	if latency := injectedLatencyMs.Load(); latency > 0 {
+		time.Sleep(time.Duration(latency) * time.Millisecond)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
