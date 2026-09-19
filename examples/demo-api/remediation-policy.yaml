@@ -1,11 +1,11 @@
 apiVersion: reliability.airo.io/v1alpha1
 kind: RemediationPolicy
 metadata:
-  name: payment-api-policy
+  name: demo-api-policy
   namespace: default
 spec:
   targetRef:
-    name: payment-api
+    name: demo-api
   slo:
     target: 0.99
     latencyThresholdMs: 50
