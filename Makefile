@@ -16,17 +16,16 @@ GO ?= go
 DOCKER ?= docker
 KUBECTL ?= kubectl
 KIND ?= kind
-HEY ?= hey
 
 # Cluster & Deploy Configs
 KIND_CLUSTER_NAME := airo-cluster
 KIND_CONFIG := deploy/kind-config.yaml
 PAYMENT_SERVICE_IMAGE := payment-service:v1.0
 PAYMENT_SERVICE_DOCKERFILE := example/Dockerfile
-PAYMENT_SERVICE_URL := http://localhost:8080
 PAYMENT_SERVICE_PATH := /api/v1/pay
 PROMETHEUS_IMAGE := prom/prometheus:v2.51.0
 GRAFANA_IMAGE := grafana/grafana:10.4.1
+WORKLOAD_LOADGEN := example/load-generator.yaml
 
 # Kubernetes Manifests & Namespaces
 MONITORING_NAMESPACE := monitoring
@@ -38,14 +37,6 @@ POLICY_MANIFEST := config/samples/payment_api_policy.yaml
 # Code Generation Tools
 CONTROLLER_TOOLS_VERSION ?= v0.16.5
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
-
-# Load Test
-LOAD_TEST_DURATION := 10m
-LOAD_TEST_RATE := 1000
-LOAD_TEST_CONCURRENCY := 20
-LOAD_TEST_METHOD := POST
-LOAD_TEST_TIMEOUT := 20
-
 
 # ==============================================================================
 # Help Menu
@@ -178,7 +169,7 @@ cluster-status: ## Display cluster node status
 # ==============================================================================
 # Container Images
 # ==============================================================================
-.PHONY: image-build image-load-app image-load-prometheus image-load-grafana image-load
+.PHONY: image-build image-load-app image-load-prometheus image-load-grafana image-load-chaos image-load
 
 image-build: ## Build payment-service container image
 	@echo "Building payment-service image..."
@@ -206,7 +197,7 @@ image-load: image-load-app image-load-prometheus ## Load all required images int
 # ==============================================================================
 # Kubernetes Deployment
 # ==============================================================================
-.PHONY: namespace-create deploy-crds deploy-monitoring deploy-workload deploy-policy deploy wait-workload
+.PHONY: namespace-create deploy-crds deploy-monitoring deploy-workload deploy-policy deploy-chaos deploy wait-workload
 
 namespace-create: ## Ensure monitoring namespace exists
 	@echo "Ensuring monitoring namespace exists..."
@@ -272,20 +263,11 @@ e2e: dev-setup e2e-test ## Provision fresh environment and run E2E verification
 # ==============================================================================
 # Load and Chaos Testing
 # ==============================================================================
-.PHONY: load-test chaos-test
+.PHONY: load-test
 
-load-test: ## Generate sustained traffic against payment-api using hey
+load-test: ## Generate sustained traffic against payment-api using fortio
 	@echo "Generating traffic against payment-api..."
-	@"$(HEY)" \
-		-z "$(LOAD_TEST_DURATION)" \
-		-q "$(LOAD_TEST_RATE)" \
-		-c "$(LOAD_TEST_CONCURRENCY)" \
-		-m "$(LOAD_TEST_METHOD)" \
-		-t "$(LOAD_TEST_TIMEOUT)" \
-		"$(PAYMENT_SERVICE_URL)$(PAYMENT_SERVICE_PATH)"
-
-chaos-test: ## Inject latency into one payment-api pod
-	@echo "Injecting latency to pod x..."
+	@"$(KUBECTL)" apply -f "$(WORKLOAD_LOADGEN)"
 
 
 # ==============================================================================
