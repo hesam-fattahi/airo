@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: grafana
+
+  template:
+    metadata:
+      labels:
+        app: grafana
+
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.4.1
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 3000
+              name: http
+
+          volumeMounts:
+            - name: datasource-volume
+              mountPath: /etc/grafana/provisioning/datasources
+
+            - name: dashboard-provider-volume
+              mountPath: /etc/grafana/provisioning/dashboards
+
+            - name: dashboard-json-volume
+              mountPath: /var/lib/grafana/dashboards
+
+      volumes:
+        - name: datasource-volume
+          configMap:
+            name: grafana-datasource-prometheus
+
+        - name: dashboard-provider-volume
+          configMap:
+            name: grafana-dashboards-provider
+
+        - name: dashboard-json-volume
+          configMap:
+            name: grafana-airo-dashboard
