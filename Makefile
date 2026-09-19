@@ -90,7 +90,7 @@ help: ## Show available Make targets
 # Code quality
 # =============================================================================
 
-.PHONY: fmt fmt-check vet unit-test check
+.PHONY: fmt fmt-check vet unit-test generate-check verify check
 
 fmt: ## Format all Go source files
 	$(GOFMT) -w $$(find . -name '*.go' -not -path './vendor/*')
@@ -107,10 +107,21 @@ vet: ## Run go vet
 unit-test: ## Run unit tests with the race detector
 	$(GO) test -race -count=1 ./...
 
-check: ## Run formatting, static analysis, and unit tests
-	$(MAKE) fmt-check
+generate-check: ## Verify generated CRD manifests are up to date
+	$(MAKE) manifests
+	@git diff --exit-code -- \
+		$(CRD_DIR) \
+		$(HELM_CRD_DIR)
+
+verify: ## Run static analysis and Helm validation
 	$(MAKE) vet
-	$(MAKE) unit-test
+	$(MAKE) helm-lint
+	$(MAKE) helm-template
+
+check: ## Run formatting, generated manifest, and verification checks
+	$(MAKE) fmt-check
+	$(MAKE) generate-check
+	$(MAKE) verify
 
 
 # =============================================================================
