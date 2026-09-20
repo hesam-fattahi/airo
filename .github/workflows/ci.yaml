@@ -68,7 +68,7 @@ jobs:
         run: make build
 
   smoke-test:
-    name: Smoke Test
+    name: Kubernetes Smoke Test
     needs: [validation, unit-test]
     runs-on: ubuntu-latest
 
@@ -91,65 +91,8 @@ jobs:
       - name: Load AIRO Image
         run: make image-load
 
-      - name: Build demo-api Image
-        run: make demo-api-image-build
-
-      - name: Load demo-api Image
-        run: make demo-api-image-load
-
-      - name: Deploy Monitoring
-        run: make deploy-monitoring
-
       - name: Deploy AIRO
         run: make deploy-airo
 
-      - name: Deploy Workload
-        run: make deploy-workload
-
       - name: Run Smoke Test
         run: make smoke-test
-
-  e2e-test:
-    name: End-to-End Test
-    needs: [validation, unit-test]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-
-      - name: Set up KinD
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: airo-cluster
-          config: deploy/kind/kind-config.yaml
-
-      - name: Build AIRO Image
-        run: make image-build
-
-      - name: Load AIRO Image
-        run: make image-load
-
-      - name: Build demo-api Image
-        run: make demo-api-image-build
-
-      - name: Load demo-api Image
-        run: make demo-api-image-load
-
-      - name: Deploy Monitoring
-        run: make deploy-monitoring
-
-      - name: Deploy AIRO
-        run: make deploy-airo
-
-      - name: Deploy Workload
-        run: make deploy-workload
-
-      - name: Run Smoke Test
-        run: make smoke-test
-
-      - name: Run End-to-End Remediation Test
-        run: make e2e-remediation

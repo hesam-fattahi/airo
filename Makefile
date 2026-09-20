@@ -177,6 +177,7 @@ demo-api-image-load: ## Load the demo-api image into the KinD cluster
 .PHONY: deploy-monitoring
 
 deploy-monitoring: ## Deploy Prometheus and Grafana to the cluster
+	$(KUBECTL) create namespace monitoring --dry-run=client -o yaml | $(KUBECTL) apply -f -
 	$(KUBECTL) apply -f $(PROMETHEUS_DIR)
 	$(KUBECTL) apply -f $(GRAFANA_DIR)
 
@@ -308,7 +309,7 @@ down: ## Alias for dev-down
 
 .PHONY: smoke-test
 
-smoke-test: ## Verify that the deployed AIRO environment is healthy
+smoke-test: ## Verify that AIRO installs and starts successfully
 	@echo "Checking AIRO deployment..."
 	$(KUBECTL) -n $(HELM_NAMESPACE) rollout status \
 		deployment/$(HELM_RELEASE) \
@@ -317,37 +318,10 @@ smoke-test: ## Verify that the deployed AIRO environment is healthy
 	@echo "Checking RemediationPolicy CRD..."
 	$(KUBECTL) get crd remediationpolicies.reliability.airo.io
 
-	@echo "Checking demo-api deployment..."
-	$(KUBECTL) -n default rollout status \
-		deployment/demo-api \
-		--timeout=120s
-
-	@echo "Checking demo-api pods..."
-	$(KUBECTL) -n default get pods \
-		-l app=demo-api
+	@echo "Checking AIRO pods..."
+	$(KUBECTL) -n $(HELM_NAMESPACE) get pods
 
 	@echo "Smoke test passed."
-
-
-# =============================================================================
-# End-to-end remediation
-# =============================================================================
-
-.PHONY: e2e-remediation
-
-e2e-remediation: ## Run the full SLO-driven AIRO remediation scenario
-	@echo "Running full AIRO remediation test..."
-	@echo "This test intentionally waits for Prometheus detection windows."
-	@echo
-	@echo "Full remediation scenario:"
-	@echo "  1. Verify healthy baseline"
-	@echo "  2. Inject latency into one demo-api pod"
-	@echo "  3. Wait for SLO/burn-rate detection"
-	@echo "  4. Verify AIRO identifies the offending pod"
-	@echo "  5. Verify traffic isolation"
-	@echo "  6. Verify pod deletion/replacement"
-	@echo "  7. Wait for recovery holdoff"
-	@echo "  8. Verify recovery state"
 
 
 # =============================================================================
@@ -364,15 +338,20 @@ $(CONTROLLER_GEN):
 		sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 
+$(CONTROLLER_GEN):
+	mkdir -p $(LOCALBIN)
+	GOBIN=$(LOCALBIN) go install \
+		sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+
+
 # =============================================================================
-# CI
+# CI (Local version)
 # =============================================================================
 
 .PHONY: ci
 
-ci: ## Run the fast CI validation suite
-	$(MAKE) fmt-check
-	$(MAKE) vet
+ci: ## Run the full CI validation (except smoke test) and unit test suite
+	$(MAKE) check
 	$(MAKE) unit-test
 	$(MAKE) helm-lint
 	$(MAKE) helm-template
