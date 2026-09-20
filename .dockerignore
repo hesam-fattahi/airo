@@ -3,7 +3,6 @@
 charts
 deploy
 docs
-examples
 test
 config/crd/bases
 *.md
