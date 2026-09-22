@@ -1,0 +1,44 @@
+version: 2
+
+updates:
+  # Go Modules (Kubernetes API, controller-runtime, Prometheus client, etc.)
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 2
+    groups:
+      go-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  # Docker Container Base Images (Dockerfile)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:15"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 2
+    groups:
+      docker-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  # GitHub Actions Workflows (.github/workflows)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
