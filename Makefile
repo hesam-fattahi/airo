@@ -302,6 +302,20 @@ up: ## Alias for dev-up
 down: ## Alias for dev-down
 	$(MAKE) dev-down
 
+###########################################################################
+
+.PHONY: inject-latency clear-latency
+inject-latency: ## Inject latency into one demo-api pod
+	@POD=$$($(KUBECTL) get pods -l app=demo-api -o jsonpath='{.items[0].metadata.name}'); \
+	echo "Injecting 200ms latency into $$POD"; \
+	$(KUBECTL) exec $$POD -- sh -c 'echo 200 > /tmp/latency_ms'
+
+clear-latency: ## Clear injected latency from all demo-api pods
+	@for POD in $$($(KUBECTL) get pods -l app=demo-api -o jsonpath='{.items[*].metadata.name}'); do \
+		echo "Clearing latency from $$POD"; \
+		$(KUBECTL) exec $$POD -- sh -c 'rm -f /tmp/latency_ms'; \
+	done
+
 
 # =============================================================================
 # Smoke tests
@@ -331,12 +345,6 @@ smoke-test: ## Verify that AIRO installs and starts successfully
 .PHONY: controller-gen
 
 controller-gen: $(CONTROLLER_GEN) ## Install controller-gen locally
-
-$(CONTROLLER_GEN):
-	mkdir -p $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install \
-		sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
-
 
 $(CONTROLLER_GEN):
 	mkdir -p $(LOCALBIN)
