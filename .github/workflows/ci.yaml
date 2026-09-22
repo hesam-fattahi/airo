@@ -1,36 +1,69 @@
 name: CI
 
 on:
-  push:
+  pull_request:
     branches:
       - main
-  pull_request:
+  push:
     branches:
       - main
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: airo
+  IMAGE_TAG: ci-${{ github.sha }}
+  KIND_CLUSTER_NAME: airo-cluster
+
 jobs:
-  validation:
-    name: Validation
+  quality:
+    name: Quality & Validation
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: go.sum
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
-      - name: Run Validation
-        run: make check
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Check Go formatting
+        run: make fmt-check
+
+      - name: Run go vet
+        run: make vet
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13
+
+      - name: Run yamllint
+        run: make yaml-lint
+
+      - name: Verify generated CRDs
+        run: make generate-check
+
+      - name: Lint Helm chart
+        run: make helm-lint
+
+      - name: Render Helm chart
+        run: make helm-template
 
   unit-test:
     name: Unit Tests
@@ -38,61 +71,112 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: go.sum
 
-      - name: Run Unit Tests
+      - name: Run unit tests with race detector
         run: make unit-test
 
-  build:
-    name: Build
-    needs: [validation, unit-test]
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-coverage
+          path: coverage.out
+
+  vulnerability:
+    name: Dependency Vulnerability Scan
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: go.sum
 
-      - name: Build Operator
-        run: make build
+      - name: Install govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
 
-  smoke-test:
-    name: Kubernetes Smoke Test
-    needs: [validation, unit-test]
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  build:
+    name: Build & Container Scan
+    needs:
+      - quality
+      - unit-test
+      - vulnerability
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
 
-      - name: Set up KinD
+      - name: Build AIRO binary
+        run: make build
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build AIRO container
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          tags: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          load: true
+          cache-from: type=gha,scope=airo-ci
+          cache-to: type=gha,scope=airo-ci,mode=max
+
+      - name: Scan AIRO container with Trivy
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      - name: Load image into KinD
         uses: helm/kind-action@v1
         with:
-          cluster_name: airo-cluster
+          cluster_name: ${{ env.KIND_CLUSTER_NAME }}
           config: deploy/kind/kind-config.yaml
 
-      - name: Build AIRO Image
-        run: make image-build
+      - name: Load AIRO image
+        run: |
+          kind load docker-image \
+            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+            --name ${{ env.KIND_CLUSTER_NAME }}
 
-      - name: Load AIRO Image
-        run: make image-load
+      - name: Install AIRO
+        run: |
+          kubectl apply -f config/crd/bases/
 
-      - name: Deploy AIRO
-        run: make deploy-airo
+          helm upgrade --install airo charts/airo \
+            --namespace airo \
+            --create-namespace \
+            --set image.repository=${{ env.IMAGE_NAME }} \
+            --set image.tag=${{ env.IMAGE_TAG }} \
+            --set image.pullPolicy=Never
 
-      - name: Run Smoke Test
+      - name: Run Kubernetes smoke test
         run: make smoke-test
