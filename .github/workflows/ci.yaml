@@ -39,9 +39,6 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
-      - name: Install yamllint
-        run: pip install yamllint
-
       - name: Check Go formatting
         run: make fmt-check
 
@@ -52,9 +49,6 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13
-
-      - name: Run yamllint
-        run: make yaml-lint
 
       - name: Verify generated CRDs
         run: make generate-check

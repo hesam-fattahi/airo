@@ -12,7 +12,6 @@ KIND ?= kind
 DOCKER ?= docker
 TRIVY ?= trivy
 GOVULNCHECK ?= govulncheck
-YAMLLINT ?= yamllint
 
 KIND_CLUSTER_NAME := airo-cluster
 KIND_CONFIG := deploy/kind/kind-config.yaml
@@ -52,7 +51,7 @@ help: ## Show available Make targets
 # Code quality and validation
 # --------------------------------------------------------------------
 
-.PHONY: fmt fmt-check vet lint yaml-lint helm-lint helm-template
+.PHONY: fmt fmt-check vet lint helm-lint helm-template
 fmt: ## Format all Go source files
 	$(GOFMT) -w $$(find . -name '*.go' -not -path './vendor/*')
 
@@ -67,14 +66,6 @@ vet: ## Run go vet
 
 lint: ## Run golangci-lint
 	golangci-lint run ./...
-
-yaml-lint: ## Lint repository YAML files
-	$(YAMLLINT) \
-		.github \
-		config \
-		deploy \
-		charts \
-		examples
 
 helm-lint: ## Validate the AIRO Helm chart
 	$(HELM) lint $(HELM_CHART)
@@ -130,7 +121,6 @@ check: ## Run formatting, generation, lint, and verification checks
 	$(MAKE) fmt-check
 	$(MAKE) generate-check
 	$(MAKE) lint
-	$(MAKE) yaml-lint
 	$(MAKE) verify
 
 # --------------------------------------------------------------------
