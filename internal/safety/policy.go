@@ -125,7 +125,8 @@ func (e *SafetyEngine) EvaluateSafety(
 	}
 
 	// Pillar 3: Bounded remediation budget.
-	normalizedCount := remediationsInWindow
+	var normalizedWindowStart time.Time
+	var normalizedCount int32
 
 	if windowStart == nil || windowStart.IsZero() {
 		normalizedWindowStart = currentTime
@@ -138,6 +139,7 @@ func (e *SafetyEngine) EvaluateSafety(
 			normalizedCount = 0
 		} else {
 			normalizedWindowStart = *windowStart
+			normalizedCount = remediationsInWindow
 		}
 	}
 
