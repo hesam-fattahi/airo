@@ -130,27 +130,6 @@ Render the chart locally with:
 
 The published chart installation procedure is documented in the main [README.md](../README.md).
 
-
-
-Common commands include:
-
-| Command | Purpose |
-| --- | --- |
-| `make check` | Run formatting, generation, linting, and validation checks |
-| `make unit-test` | Run Go unit tests with the race detector |
-| `make image-build` | Build the AIRO container image |
-| `make demo-api-image-build` | Build the example workload image |
-| `make dev-up` | Create and deploy the complete local environment |
-| `make dev-down` | Remove the local KinD environment |
-| `make cluster-recreate` | Recreate the KinD cluster |
-| `make status` | Show AIRO, monitoring, and workload status |
-| `make run-monitoring` | Port-forward Prometheus and Grafana |
-| `make airo-logs` | Follow AIRO controller logs |
-| `make demo-api-status` | Show the example workload status |
-| `make smoke-test` | Verify the AIRO installation |
-| `make helm-lint` | Validate the Helm chart |
-| `make helm-template` | Render the Helm chart locally |
-
 ## Observability
 
 Grafana provides the primary visual interface for inspecting the local demonstration environment.
